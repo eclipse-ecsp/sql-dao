@@ -91,7 +91,7 @@
 		<prometheus.client.version>0.6.0</prometheus.client.version>
 		<spring.boot.version>3.2.5</spring.boot.version>
 		<lombok.version>1.18.28</lombok.version>
-		<postgres.version>42.7.3</postgres.version>
+		<postgres.version>42.7.5</postgres.version>
 		<dropwizard.version>4.2.19</dropwizard.version>
 		<spring.version>6.1.14</spring.version>
 		<jacoco.ut.execution.data.file>${project.build.directory}/coverage-reports/jacoco-ut.exec</jacoco.ut.execution.data.file>
