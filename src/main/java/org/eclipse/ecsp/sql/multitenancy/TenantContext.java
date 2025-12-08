@@ -59,7 +59,9 @@ public class TenantContext {
     private static final ThreadLocal<String> CURRENT_TENANT = new ThreadLocal<>();
 
     /** Default tenant ID */
-    private static final String DEFAULT_TENANT_ID = MultitenantConstants.DEFAULT_TENANT_ID;
+    private static final String DEFAULT_TENANT_ID = System.getProperty(
+            MultitenantConstants.TENANT_DEFAULT, 
+            MultitenantConstants.DEFAULT_TENANT_ID);
 
     /** Static holder for multitenancy enabled flag */
     private static boolean multitenancyEnabled = false;
