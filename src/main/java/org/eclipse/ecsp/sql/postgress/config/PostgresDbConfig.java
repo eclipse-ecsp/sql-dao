@@ -454,11 +454,19 @@ public class PostgresDbConfig {
     }
 
     /**
-     * Creates the and get data source.
+     * Creates and gets a data source with the provided database properties.
+     * 
+     * <p>This method creates a HikariCP datasource configured with the provided database properties.
+     * It can be called directly when you already have the database credentials set in the properties
+     * and don't need to rely on the CredentialsProvider lookup.</p>
+     * 
+     * <p><b>Note:</b> Ensure that username and password are already set in the dbProperties 
+     * before calling this method, as it does not fetch credentials from CredentialsProvider.</p>
      *
-     * @return the data source
+     * @param dbProperties the database properties containing connection configuration
+     * @return the configured DataSource instance
      */
-    private DataSource createAndGetDataSource(DatabaseProperties dbProperties) {
+    public DataSource createAndGetDataSource(DatabaseProperties dbProperties) {
 
         HikariConfig config = new HikariConfig();
 
