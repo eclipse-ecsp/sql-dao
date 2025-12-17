@@ -4,9 +4,9 @@ name: Maven Packaging and Sonar Analysis
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "dynamic-data-datasource-management"]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "dynamic-data-datasource-management" ]
   workflow_dispatch:
 
 jobs:
