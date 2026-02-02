@@ -49,10 +49,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.mockito.Mockito;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import io.prometheus.client.CollectorRegistry;
@@ -68,7 +71,7 @@ import static org.mockito.Mockito.verify;
  */
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = {PostgresDbConfig.class, DefaultPostgresDbCredentialsProvider.class,
-            SqlDaoApplication.class })
+            SqlDaoApplication.class, PostgresDbConfigRefreshTest.TestConfig.class })
 @TestPropertySource("/application-dao-refresh-test.properties")
 class PostgresDbConfigRefreshTest {
 
@@ -81,7 +84,7 @@ class PostgresDbConfigRefreshTest {
     @Qualifier("targetDataSources")
     private Map<String, DataSource> targetDataSources;
     
-    @SpyBean
+    @Autowired
     private PostgresDbConfig config;
     
     /** The postgresql container. */
@@ -123,5 +126,18 @@ class PostgresDbConfigRefreshTest {
     static void tearUpPostgresServer() {
         CollectorRegistry.defaultRegistry.clear();
         postgresqlContainer.stop();
+    }
+
+    /**
+     * Test configuration to create a spy of PostgresDbConfig.
+     */
+    @TestConfiguration
+    static class TestConfig {
+        
+        @Bean
+        @Primary
+        public PostgresDbConfig postgresDbConfig(PostgresDbConfig realConfig) {
+            return Mockito.spy(realConfig);
+        }
     }
 }
