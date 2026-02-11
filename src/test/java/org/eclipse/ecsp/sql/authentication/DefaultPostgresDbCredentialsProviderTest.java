@@ -39,7 +39,6 @@
 
 package org.eclipse.ecsp.sql.authentication;
 
-import org.eclipse.ecsp.sql.SqlDaoApplication;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -50,6 +49,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -58,8 +58,9 @@ import static org.junit.Assert.assertNotNull;
  * Test for class {@link DefaultPostgresDbCredentialsProvider}.
  */
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = { SqlDaoApplication.class })
+@ContextConfiguration(classes = { DefaultPostgresDbCredentialsProvider.class })
 @TestPropertySource("/application-dao-test.properties")
+@Testcontainers
 public class DefaultPostgresDbCredentialsProviderTest {
 
     /** The default postgres db credentials provider. */
@@ -68,7 +69,8 @@ public class DefaultPostgresDbCredentialsProviderTest {
 
     /** The postgresql container. */
     @Container
-    static PostgreSQLContainer postgresqlContainer = new PostgreSQLContainer("postgres:15").withDatabaseName("test")
+    @SuppressWarnings("resource")
+    static PostgreSQLContainer<?> postgresqlContainer = new PostgreSQLContainer<>("postgres:15").withDatabaseName("test")
             .withUsername("root").withPassword("root");
 
     /**

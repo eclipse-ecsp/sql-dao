@@ -80,7 +80,7 @@
     </organization>
 
 	<properties>
-		<maven.surefire.version>2.22.0</maven.surefire.version>
+		<maven.surefire.version>3.5.4</maven.surefire.version>
 		<commons.lang3.version>3.13.0</commons.lang3.version>
 		<utils.version>1.2.SPRING-SNAPSHOT</utils.version>
 		<java.version>17</java.version>
