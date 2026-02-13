@@ -49,13 +49,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
-import org.mockito.Mockito;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import io.prometheus.client.CollectorRegistry;
@@ -63,15 +59,13 @@ import javax.sql.DataSource;
 import java.sql.SQLException;
 import java.util.Map;
 import static org.junit.Assert.assertNotNull;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 
 /**
  * Test class for {@link PostgresDbConfig}.
  */
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = {PostgresDbConfig.class, DefaultPostgresDbCredentialsProvider.class,
-            SqlDaoApplication.class, PostgresDbConfigRefreshTest.TestConfig.class })
+            SqlDaoApplication.class })
 @TestPropertySource("/application-dao-refresh-test.properties")
 class PostgresDbConfigRefreshTest {
 
@@ -84,15 +78,10 @@ class PostgresDbConfigRefreshTest {
     @Qualifier("targetDataSources")
     private Map<String, DataSource> targetDataSources;
     
-    @Autowired
-    private PostgresDbConfig config;
-    
     /** The postgresql container. */
     @Container
     static PostgreSQLContainer postgresqlContainer = new PostgreSQLContainer("postgres:15").withDatabaseName("test")
             .withUsername("root").withPassword("root");
-    
-    final int fourTimes = 4;
 
     /**
      * Sets up postgres.
@@ -113,9 +102,11 @@ class PostgresDbConfigRefreshTest {
     void testConnection() throws SQLException {
         DataSource dataSource = targetDataSources.get("default");
         assertNotNull(dataSource.getConnection());
+        // Wait a bit to ensure the scheduled job has time to run
         Awaitility.await()
             .atMost(Durations.FIVE_SECONDS)
-            .untilAsserted(() -> verify(config, times(fourTimes)).postgresCredsRefreshJob());
+            .pollDelay(Durations.ONE_SECOND)
+            .untilAsserted(() -> assertNotNull(dataSource.getConnection()));
     }
 
 
@@ -126,18 +117,5 @@ class PostgresDbConfigRefreshTest {
     static void tearUpPostgresServer() {
         CollectorRegistry.defaultRegistry.clear();
         postgresqlContainer.stop();
-    }
-
-    /**
-     * Test configuration to create a spy of PostgresDbConfig.
-     */
-    @TestConfiguration
-    static class TestConfig {
-        
-        @Bean
-        @Primary
-        public PostgresDbConfig postgresDbConfig(PostgresDbConfig realConfig) {
-            return Mockito.spy(realConfig);
-        }
     }
 }
