@@ -43,7 +43,6 @@ import org.awaitility.Awaitility;
 import org.awaitility.Durations;
 import org.eclipse.ecsp.sql.SqlDaoApplication;
 import org.eclipse.ecsp.sql.authentication.DefaultPostgresDbCredentialsProvider;
-import org.eclipse.ecsp.sql.test.EnabledIfDockerAvailable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -64,7 +63,6 @@ import static org.junit.Assert.assertNotNull;
 /**
  * Test class for {@link PostgresDbConfig}.
  */
-@EnabledIfDockerAvailable
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = {PostgresDbConfig.class, DefaultPostgresDbCredentialsProvider.class,
             SqlDaoApplication.class })

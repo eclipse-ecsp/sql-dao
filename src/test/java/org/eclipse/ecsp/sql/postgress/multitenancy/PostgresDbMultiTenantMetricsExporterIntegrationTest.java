@@ -48,7 +48,6 @@ import org.eclipse.ecsp.sql.multitenancy.TenantContext;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.eclipse.ecsp.sql.postgress.metrics.IgnitePostgresDbGuage;
 import org.eclipse.ecsp.sql.postgress.metrics.IgnitePostgresDbMetricsExporter;
-import org.eclipse.ecsp.sql.test.EnabledIfDockerAvailable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -86,7 +85,6 @@ import static org.junit.jupiter.api.Assertions.fail;
  * @version 1.1
  * @since 2025-10-28
  */
-@EnabledIfDockerAvailable
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = { SqlDaoApplication.class })
 @TestPropertySource(locations = "classpath:application-dao-multitenant-metrics-test.properties")

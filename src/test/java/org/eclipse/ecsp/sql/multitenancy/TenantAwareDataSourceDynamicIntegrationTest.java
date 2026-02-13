@@ -42,7 +42,6 @@ package org.eclipse.ecsp.sql.multitenancy;
 import io.prometheus.client.CollectorRegistry;
 import org.eclipse.ecsp.sql.SqlDaoApplication;
 import org.eclipse.ecsp.sql.postgress.config.PostgresDbConfig;
-import org.eclipse.ecsp.sql.test.EnabledIfDockerAvailable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -81,7 +80,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @version 1.0
  * @since 2025-12-18
  */
-@EnabledIfDockerAvailable
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = { SqlDaoApplication.class })
 @TestPropertySource(locations = "classpath:application-dao-dynamic-tenant-test.properties")

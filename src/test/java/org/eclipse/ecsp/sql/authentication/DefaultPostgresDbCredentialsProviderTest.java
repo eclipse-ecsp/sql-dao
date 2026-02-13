@@ -39,7 +39,6 @@
 
 package org.eclipse.ecsp.sql.authentication;
 
-import org.eclipse.ecsp.sql.test.EnabledIfDockerAvailable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -58,7 +57,6 @@ import static org.junit.Assert.assertNotNull;
 /**
  * Test for class {@link DefaultPostgresDbCredentialsProvider}.
  */
-@EnabledIfDockerAvailable
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = { DefaultPostgresDbCredentialsProvider.class })
 @TestPropertySource("/application-dao-test.properties")
