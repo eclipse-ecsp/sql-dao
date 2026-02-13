@@ -55,6 +55,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import io.prometheus.client.CollectorRegistry;
 import javax.sql.DataSource;
 import java.sql.SQLException;
@@ -70,6 +71,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = { PostgresDbConfig.class, DefaultPostgresDbCredentialsProvider.class, SqlDaoApplication.class })
 @TestPropertySource("/application-dao-test.properties")
+@Testcontainers
 class PostgresDbConfigTest {
 
     /** The default postgres db credentials provider. */
