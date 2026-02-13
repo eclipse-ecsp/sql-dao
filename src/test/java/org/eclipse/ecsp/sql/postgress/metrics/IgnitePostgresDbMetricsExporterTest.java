@@ -42,6 +42,7 @@ package org.eclipse.ecsp.sql.postgress.metrics;
 import org.eclipse.ecsp.sql.SqlDaoApplication;
 import org.eclipse.ecsp.sql.authentication.DefaultPostgresDbCredentialsProvider;
 import org.eclipse.ecsp.sql.postgress.config.PostgresDbConfig;
+import org.eclipse.ecsp.sql.test.EnabledIfDockerAvailable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -59,6 +60,7 @@ import static org.junit.Assert.assertNotEquals;
 /**
  * Test class for {@link IgnitePostgresDbMetricsExporter}.
  */
+@EnabledIfDockerAvailable
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = { DefaultPostgresDbCredentialsProvider.class, PostgresDbConfig.class,
     IgnitePostgresDbGuage.class, IgnitePostgresDbMetricsExporter.class, SqlDaoApplication.class })

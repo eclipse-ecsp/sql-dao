@@ -42,6 +42,7 @@ package org.eclipse.ecsp.sql.postgress.health;
 import org.eclipse.ecsp.sql.SqlDaoApplication;
 import org.eclipse.ecsp.sql.authentication.DefaultPostgresDbCredentialsProvider;
 import org.eclipse.ecsp.sql.postgress.config.PostgresDbConfig;
+import org.eclipse.ecsp.sql.test.EnabledIfDockerAvailable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,7 @@ import static org.junit.Assert.assertTrue;
 /**
  *Test class for {@link PostgresDbHealthService}.
  */
+@EnabledIfDockerAvailable
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = { DefaultPostgresDbCredentialsProvider.class,
     PostgresDbConfig.class, PostgresDbHealthMonitor.class, PostgresDbHealthCheck.class, SqlDaoApplication.class })

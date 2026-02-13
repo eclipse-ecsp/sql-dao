@@ -43,6 +43,7 @@ import org.eclipse.ecsp.sql.SqlDaoApplication;
 import org.eclipse.ecsp.sql.authentication.CredentialsProvider;
 import org.eclipse.ecsp.sql.authentication.DefaultPostgresDbCredentialsProvider;
 import org.eclipse.ecsp.sql.exception.SqlDaoException;
+import org.eclipse.ecsp.sql.test.EnabledIfDockerAvailable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -67,6 +68,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Test class for {@link PostgresDbConfig}.
  */
+@EnabledIfDockerAvailable
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = { PostgresDbConfig.class, DefaultPostgresDbCredentialsProvider.class, SqlDaoApplication.class })
 @TestPropertySource("/application-dao-test.properties")
