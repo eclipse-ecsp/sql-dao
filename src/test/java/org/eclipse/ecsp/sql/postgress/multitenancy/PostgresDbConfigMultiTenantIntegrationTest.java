@@ -47,6 +47,7 @@ import org.eclipse.ecsp.sql.multitenancy.TenantAwareDataSource;
 import org.eclipse.ecsp.sql.multitenancy.TenantContext;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.eclipse.ecsp.sql.postgress.config.PostgresDbConfig;
+import org.eclipse.ecsp.sql.test.EnabledIfDockerAvailable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -89,6 +90,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @version 1.1
  * @since 2025-10-27
  */
+@EnabledIfDockerAvailable
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = { SqlDaoApplication.class })
 @TestPropertySource(locations = "classpath:application-dao-multitenant-test.properties")
