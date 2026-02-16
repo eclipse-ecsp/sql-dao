@@ -41,7 +41,7 @@ package org.eclipse.ecsp.sql.authentication;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * The Class DefaultPostgresDbTest.

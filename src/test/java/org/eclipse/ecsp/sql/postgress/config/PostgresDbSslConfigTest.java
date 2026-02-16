@@ -56,7 +56,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import javax.sql.DataSource;
 import java.sql.SQLException;
 
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 /**
  * Test class for {@link PostgresDbConfig}.
  */
@@ -86,7 +86,7 @@ class PostgresDbSslConfigTest {
      */
     @BeforeAll
     public static void setUpPostgres() {
-        postgresqlContainer.start();
+        // Container is automatically started by @Testcontainers annotation
         System.setProperty("DB_URL", postgresqlContainer.getJdbcUrl());
     }
 

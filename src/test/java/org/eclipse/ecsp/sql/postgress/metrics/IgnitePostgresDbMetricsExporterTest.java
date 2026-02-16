@@ -54,8 +54,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import io.prometheus.client.CollectorRegistry;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
  * Test class for {@link IgnitePostgresDbMetricsExporter}.
@@ -86,7 +86,7 @@ class IgnitePostgresDbMetricsExporterTest {
     @BeforeAll
     public static void setUpPostgres() {
         CollectorRegistry.defaultRegistry.clear();
-        postgresqlContainer.start();
+        // Container is automatically started by @Testcontainers annotation
         System.setProperty("DB_URL", postgresqlContainer.getJdbcUrl());
     }
 

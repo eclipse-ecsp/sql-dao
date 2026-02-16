@@ -136,11 +136,7 @@ class PostgresDbMultiTenantMetricsExporterIntegrationTest {
     static void setUpContainers() {
         CollectorRegistry.defaultRegistry.clear();
         
-        // Start all containers
-        tenant1Container.start();
-        tenant2Container.start();
-        tenant3Container.start();
-        
+        // Containers are automatically started by @Testcontainers annotation
         // Set system properties for each tenant
         System.setProperty("DB_URL_TENANT1", tenant1Container.getJdbcUrl());
         System.setProperty("DB_URL_TENANT2", tenant2Container.getJdbcUrl());

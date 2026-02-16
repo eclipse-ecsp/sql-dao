@@ -51,8 +51,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * Test for class {@link DefaultPostgresDbCredentialsProvider}.
@@ -78,7 +78,7 @@ public class DefaultPostgresDbCredentialsProviderTest {
      */
     @BeforeAll
     public static void setUpPostgres() {
-        postgresqlContainer.start();
+        // Container is automatically started by @Testcontainers annotation
         System.setProperty("DB_URL", postgresqlContainer.getJdbcUrl());
     }
 

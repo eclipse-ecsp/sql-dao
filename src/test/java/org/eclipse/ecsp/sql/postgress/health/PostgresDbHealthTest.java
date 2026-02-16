@@ -45,7 +45,7 @@ import org.eclipse.ecsp.sql.dao.constants.MetricsConstants;
 import org.eclipse.ecsp.sql.dao.constants.PostgresDbConstants;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * class {@link PostgresDbHealthTest}

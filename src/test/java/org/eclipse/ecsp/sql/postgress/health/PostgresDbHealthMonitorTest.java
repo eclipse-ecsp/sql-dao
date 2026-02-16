@@ -54,9 +54,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import io.prometheus.client.CollectorRegistry;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  *Test class for {@link PostgresDbHealthService}.
@@ -87,7 +87,7 @@ class PostgresDbHealthMonitorTest {
     @BeforeAll
     public static void setUpPostgres() {
         CollectorRegistry.defaultRegistry.clear();
-        postgresqlContainer.start();
+        // Container is automatically started by @Testcontainers annotation
         System.setProperty("DB_URL", postgresqlContainer.getJdbcUrl());
     }
 

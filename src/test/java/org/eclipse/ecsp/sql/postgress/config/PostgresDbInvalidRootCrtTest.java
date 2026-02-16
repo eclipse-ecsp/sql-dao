@@ -47,7 +47,7 @@ class PostgresDbInvalidRootCrtTest {
      */
     @BeforeAll
      public static void setUpPostgres() {
-        postgresqlContainer.start();
+        // Container is automatically started by @Testcontainers annotation
         System.setProperty("DB_URL", postgresqlContainer.getJdbcUrl());
     }
 
@@ -59,14 +59,5 @@ class PostgresDbInvalidRootCrtTest {
     @Test
     void testConnection() throws SQLException {
         assertNull(dataSource.getConnection());
-    }
-
-
-    /**
-     * Tear up postgres server.
-     */
-    @AfterAll
-    public static void tearUpPostgresServer() {
-        postgresqlContainer.stop();
     }
 }
