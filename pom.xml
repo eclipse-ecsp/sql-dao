@@ -91,7 +91,6 @@
 		<prometheus.client.version>0.6.0</prometheus.client.version>
 		<spring.boot.version>4.0.2</spring.boot.version>
 		<testcontainers.version>2.0.3</testcontainers.version>
-		<springboot.aop>3.5.10</springboot.aop>
 		<lombok.version>1.18.28</lombok.version>
 		<postgres.version>42.7.3</postgres.version>
 		<dropwizard.version>4.2.19</dropwizard.version>
@@ -233,8 +232,8 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-aop</artifactId>
-			<version>${springboot.aop}</version>
+			<artifactId>spring-boot-starter-aspectj</artifactId>
+			<version>${spring.boot.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
