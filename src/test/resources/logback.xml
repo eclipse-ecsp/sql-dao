@@ -69,7 +69,6 @@
     <logger name="com.codahale.metrics" level="ERROR" additivity="false">
         <appender-ref ref="ASYNC-STDOUT" />
     </logger>
-    <include resource="org/springframework/boot/logging/logback/base.xml" />
     <logger name="org.springframework" level="ERROR">
         <appender-ref ref="ASYNC-STDOUT" />
     </logger>
