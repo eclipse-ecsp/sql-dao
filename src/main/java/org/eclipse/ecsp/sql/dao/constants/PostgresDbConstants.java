@@ -130,8 +130,11 @@ public class PostgresDbConstants {
     /** Default maximum pool size. */
     public static final int DEFAULT_MAX_POOL_SIZE = 10;
     
-    /** Default maximum idle time in seconds. */
-    public static final int DEFAULT_MAX_IDLE_TIME = 600;
+    /** Default maximum idle time in milliseconds (10 minutes). */
+    public static final int DEFAULT_MAX_IDLE_TIME = 600000;
+
+    /** Default keep alive time in milliseconds (1 minute - must be shorter than network idle timeout). */
+    public static final int DEFAULT_KEEP_ALIVE_TIME = 60000;
     
     /** Default cache prepared statements value. */
     public static final String DEFAULT_CACHE_PREP_STMTS = "true";
