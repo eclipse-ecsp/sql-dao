@@ -128,4 +128,7 @@ public class TenantDatabaseProperties implements DatabaseProperties {
 
 	// Root certificate path
 	private String rootCrtPath = "";
+
+	// Keep alive time in milliseconds
+	private int keepAliveTime = PostgresDbConstants.DEFAULT_KEEP_ALIVE_TIME;
 }
