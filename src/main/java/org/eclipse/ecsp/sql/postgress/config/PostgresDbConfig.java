@@ -285,10 +285,12 @@ public class PostgresDbConfig {
         LOGGER.debug("Cleaning up existing connections for tenant ID: {}.", tenantId);
         cleanupConnections(targetDataSources.get(tenantId));
         LOGGER.info("Creating connection with refreshed credentials...");
-        try {
-            Connection connection = createConnections(tenantId, props);
+        try (Connection connection = createConnections(tenantId, props)) {
+            if (!connection.isValid(1)) {
+                throw new SqlDaoException("Connection validation failed after credentials refresh for tenant: " + tenantId);
+            }
             LOGGER.info(
-                    "Connection created successfully with refreshed credentials for tenant ID: {}.",
+                    "Connection verified with refreshed credentials for tenant ID: {}.",
                     tenantId);
         } catch (Exception exception) {
             try {
@@ -312,7 +314,6 @@ public class PostgresDbConfig {
             throws InterruptedException, SQLException {
         int connectionRetryCount = dbProperties.getConnectionRetryCount();
         int connectionRetryDelay = dbProperties.getConnectionRetryDelay();
-        Connection connection;
         do {
             try {
                 Thread.sleep(connectionRetryDelay);
@@ -320,9 +321,12 @@ public class PostgresDbConfig {
                         tenantId, connectionRetryCount);
                 connectionRetryCount--;
                 dbProperties.setConnectionRetryCount(connectionRetryCount);
-                connection = createConnections(tenantId, dbProperties);
-                if (connection != null && !connection.isValid(1)) {
-                    continue;
+                try (Connection connection = createConnections(tenantId, dbProperties)) {
+                    if (connection.isValid(1)) {
+                        LOGGER.info("Connection validated successfully for tenant ID: {}. Retry successful.", tenantId);
+                        return;
+                    }
+                    LOGGER.warn("Connection validation failed for tenant ID: {}. Retrying...", tenantId);
                 }
             } catch (Exception e) {
                 if (connectionRetryCount == 0) {
@@ -409,8 +413,7 @@ public class PostgresDbConfig {
                 }
             }
         }
-        try {
-            Connection connection = targetDataSources.get(tenantId).getConnection();
+        try (Connection connection = targetDataSources.get(tenantId).getConnection()) {
             LOGGER.info("Datasource and connection created successfully for tenantId: {}", tenantId);
         } catch (Exception exception) {
             LOGGER.error( "Exception occurred while creating connection for tenantId: {}, exception is: {}",
@@ -479,6 +482,7 @@ public class PostgresDbConfig {
         config.setIdleTimeout(dbProperties.getMaxIdleTime());
         config.setPoolName(dbProperties.getPoolName());
         config.setConnectionTimeout(dbProperties.getConnectionTimeoutMs());
+        config.setKeepaliveTime(dbProperties.getKeepAliveTime());
         config.addHealthCheckProperty(HealthConstants.POSTGRES_EXPECTED_99_PI_MS,
                 dbProperties.getExpected99thPercentileMsValue());
         config.addDataSourceProperty(PostgresDbConstants.POSTGRES_DS_CACHE_PREPARED_STATEMENTS,

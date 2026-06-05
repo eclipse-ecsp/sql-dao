@@ -327,4 +327,18 @@ public interface DatabaseProperties {
      * @param rootCrtPath the root certificate path to set
      */
     void setRootCrtPath(String rootCrtPath);
+
+    /**
+     * Gets the keep alive time in milliseconds.
+     * HikariCP periodically pings idle connections at this interval to prevent
+     * them from being silently dropped by network infrastructure.
+     * @return the keep alive time
+     */
+    int getKeepAliveTime();
+
+    /**
+     * Sets the keep alive time in milliseconds.
+     * @param keepAliveTime the keep alive time to set
+     */
+    void setKeepAliveTime(int keepAliveTime);
 }
