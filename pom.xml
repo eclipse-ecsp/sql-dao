@@ -42,7 +42,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.eclipse.ecsp</groupId>
 	<artifactId>sql-dao</artifactId>
-	<version>1.3-SNAPSHOT</version>
+	<version>1.3-spring-upgrade-SNAPSHOT</version>
 	
 	<name>SQL DAO Library</name>
 	<description>DAO framework for SQL databases</description>
@@ -87,7 +87,7 @@
 	<properties>
 		<maven.surefire.version>3.5.2</maven.surefire.version>
 		<commons.lang3.version>3.13.0</commons.lang3.version>
-		<utils.version>1.2.0</utils.version>
+		<utils.version>1.3-spring-upgrade-SNAPSHOT</utils.version>
 		<java.version>25</java.version>
 		<maven.compiler.source>${java.version}</maven.compiler.source>
 		<maven.compiler.target>${java.version}</maven.compiler.target>
@@ -95,7 +95,7 @@
 		<awaitility.version>4.3.0</awaitility.version>
 		<prometheus.client.version>0.6.0</prometheus.client.version>
         <testcontainers.version>2.0.3</testcontainers.version>
-		<spring.boot.version>4.0.2</spring.boot.version>
+		<spring.boot.version>4.0.5</spring.boot.version>
 		<lombok.version>1.18.42</lombok.version>
 		<postgres.version>42.7.3</postgres.version>
 		<dropwizard.version>4.2.19</dropwizard.version>
