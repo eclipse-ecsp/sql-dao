@@ -1,0 +1,22 @@
+
+name: Maven Build & UT Report Generation
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  maven_build:
+    uses: eclipse-ecsp/.github/.github/workflows/workflow-maven-run.yml@main
+    name: Maven Build
+    with:
+      java_version: '25'
+      java_distribution: 'temurin'
+      maven_args: 'clean package --file pom.xml'
+      test-report: true
+      summaries-test-report: true
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}
