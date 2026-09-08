@@ -42,7 +42,6 @@ package org.eclipse.ecsp.sql.multitenancy;
 import javax.sql.DataSource;
 import org.eclipse.ecsp.sql.dao.constants.MultitenantConstants;
 import org.eclipse.ecsp.sql.exception.TargetDataSourceNotFoundException;
-import org.eclipse.ecsp.sql.exception.TenantNotFoundException;
 import org.eclipse.ecsp.utils.logger.IgniteLogger;
 import org.eclipse.ecsp.utils.logger.IgniteLoggerFactory;
 import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
