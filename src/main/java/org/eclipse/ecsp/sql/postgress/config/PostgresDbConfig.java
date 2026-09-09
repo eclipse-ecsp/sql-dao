@@ -454,6 +454,9 @@ public class PostgresDbConfig {
         if (StringUtils.isEmpty(dbProperties.getDriverClassName())) {
             inValidConfAttributes.add(PostgresDbConstants.POSTGRES_DRIVER_CLASS_NAME);
         }
+        if (dbProperties.getSchema() != null && StringUtils.isBlank(dbProperties.getSchema())) {
+            inValidConfAttributes.add("schema");
+        }
         if (dbProperties.getMaxPoolSize() == 0) {
             inValidConfAttributes.add(PostgresDbConstants.POSTGRES_MAX_POOL_SIZE);
         }
@@ -474,6 +477,10 @@ public class PostgresDbConfig {
         HikariConfig config = new HikariConfig();
 
         config.setJdbcUrl(dbProperties.getJdbcUrl());
+        // validate() already ensures schema, if set, is non-blank
+        if (dbProperties.getSchema() != null) {
+            config.setSchema(dbProperties.getSchema());
+        }
         config.setUsername(dbProperties.getUserName());
         config.setPassword(dbProperties.getPassword());
         config.setDriverClassName(dbProperties.getDriverClassName());

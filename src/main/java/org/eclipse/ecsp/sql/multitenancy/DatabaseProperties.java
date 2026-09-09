@@ -63,6 +63,18 @@ public interface DatabaseProperties {
      * @param jdbcUrl the JDBC URL to set
      */
     void setJdbcUrl(String jdbcUrl);
+
+    /**
+     * Gets the PostgreSQL schema for the database connection.
+     * @return the schema name, or null when the database default should be used
+     */
+    String getSchema();
+
+    /**
+     * Sets the PostgreSQL schema for the database connection.
+     * @param schema the schema name
+     */
+    void setSchema(String schema);
     
     /**
      * Gets the username for database authentication.
