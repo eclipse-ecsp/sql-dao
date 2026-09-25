@@ -43,6 +43,7 @@ import org.eclipse.ecsp.sql.authentication.CredentialsProvider;
 import org.eclipse.ecsp.sql.authentication.DefaultPostgresDbCredentialsProvider;
 import org.eclipse.ecsp.sql.exception.SqlDaoException;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -53,7 +54,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.sql.Connection;
 import java.util.Map;
 import javax.sql.DataSource;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -97,11 +97,18 @@ class PostgresConfigJunitTest {
     public static final int THIRTY_THREE = 30;
 
     /**
+     * Initializes Mockito-managed test fields.
+     */
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
+
+    /**
      * Test failure datasource creation.
      */
     @Test
     void testFailureDatasourceCreation() {
-        MockitoAnnotations.openMocks(this);
         defaultPostgresDbCredentialsProvider = new DefaultPostgresDbCredentialsProvider();
         ReflectionTestUtils.setField(postgresDbConfig, "credsProviderMap", credentialsProviderMap);
         ReflectionTestUtils.setField(defaultPostgresDbCredentialsProvider, "userName", "testUser");
@@ -118,4 +125,24 @@ class PostgresConfigJunitTest {
         Exception e = assertThrows(SqlDaoException.class, () -> postgresDbConfig.initDataSource("default", dbProps));
         assertTrue(e.getMessage().contains("Retry Attempts exhausted for creating the datasource"));
     }
+
+    /**
+     * Validates that a blank schema is rejected during config validation while still allowing null/omitted schema.
+     */
+    @Test
+    void testValidateRejectsBlankSchemaWhenProvided() {
+        TenantDatabaseProperties dbProps = new TenantDatabaseProperties();
+        dbProps.setJdbcUrl("jdbc:postgresql://localhost:5432/testdb");
+        dbProps.setUserName("testUser");
+        dbProps.setPassword("testPassword");
+        dbProps.setDriverClassName("org.postgresql.Driver");
+        dbProps.setMaxPoolSize(5);
+        dbProps.setSchema("   ");
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> ReflectionTestUtils.invokeMethod(postgresDbConfig, "validate", dbProps));
+
+        assertTrue(exception.getMessage().contains("schema"));
+    }
+
 }

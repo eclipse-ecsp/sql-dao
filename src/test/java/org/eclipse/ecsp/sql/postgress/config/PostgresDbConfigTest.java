@@ -43,6 +43,7 @@ import org.eclipse.ecsp.sql.SqlDaoApplication;
 import org.eclipse.ecsp.sql.authentication.CredentialsProvider;
 import org.eclipse.ecsp.sql.authentication.DefaultPostgresDbCredentialsProvider;
 import org.eclipse.ecsp.sql.exception.SqlDaoException;
+import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -55,14 +56,18 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
+import com.zaxxer.hikari.HikariDataSource;
 import io.prometheus.client.CollectorRegistry;
 import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Test class for {@link PostgresDbConfig}.
@@ -108,6 +113,32 @@ class PostgresDbConfigTest {
     @Test
     void testConnection() throws SQLException {
         assertNotNull((targetDataSources.get("default")).getConnection());
+    }
+
+    /**
+     * Verifies that the tenant datasource uses its configured PostgreSQL schema.
+     */
+    @Test
+    void testDatasourceSchemaConfiguration() throws SQLException {
+        TenantDatabaseProperties dbProps = new TenantDatabaseProperties();
+        dbProps.setJdbcUrl(postgresqlContainer.getJdbcUrl());
+        dbProps.setUserName(postgresqlContainer.getUsername());
+        dbProps.setPassword(postgresqlContainer.getPassword());
+        dbProps.setSchema("tenant_a");
+
+        try (Connection connection = targetDataSources.get("default").getConnection();
+                java.sql.Statement statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA IF NOT EXISTS tenant_a");
+        }
+
+        try (HikariDataSource tenantDataSource = (HikariDataSource)
+                postgresDbConfig.createAndGetDataSource(dbProps);
+                Connection connection = tenantDataSource.getConnection();
+                java.sql.Statement statement = connection.createStatement();
+                ResultSet resultSet = statement.executeQuery("SELECT current_schema()")) {
+            assertTrue(resultSet.next());
+            assertEquals("tenant_a", resultSet.getString(1));
+        }
     }
 
     /**

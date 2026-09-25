@@ -63,6 +63,9 @@ public class TenantDatabaseProperties implements DatabaseProperties {
 	// JDBC URL for the tenant's database
 	private String jdbcUrl;
 
+	// PostgreSQL schema for the tenant's database connection
+	private String schema;
+
 	// Username for the tenant's database
 	private String userName;
 
