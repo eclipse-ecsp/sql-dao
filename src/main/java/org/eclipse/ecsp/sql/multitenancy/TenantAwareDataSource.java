@@ -39,16 +39,22 @@
 
 package org.eclipse.ecsp.sql.multitenancy;
 
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.locks.Lock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
+import org.eclipse.ecsp.sql.authentication.CredentialsProvider;
 import org.eclipse.ecsp.sql.dao.constants.MultitenantConstants;
 import org.eclipse.ecsp.sql.exception.SqlDaoException;
+import org.eclipse.ecsp.sql.migration.TenantMigrationRunner;
 import org.eclipse.ecsp.sql.postgress.config.PostgresDbConfig;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -71,6 +77,8 @@ public class TenantAwareDataSource {
 
     private static final Logger logger = Logger.getLogger(TenantAwareDataSource.class.getName());
 
+    private static final int CONNECTION_VALIDATION_TIMEOUT_SECONDS = 5;
+
     @Value("${" + MultitenantConstants.MULTITENANCY_ENABLED + ":false}")
     private boolean isMultitenancyEnabled;
 
@@ -84,6 +92,10 @@ public class TenantAwareDataSource {
     @Autowired
     @Qualifier("tenantConfigMap")
     private Map<String, TenantDatabaseProperties> tenantConfigMap;
+
+    /** Present only when sqldao.liquibase.enabled=true. */
+    @Autowired
+    private ObjectProvider<TenantMigrationRunner> migrationRunnerProvider;
 
     private TenantRoutingDataSource tenantRoutingDataSource;
 
@@ -121,12 +133,16 @@ public class TenantAwareDataSource {
 
         /**
      * Adds or updates a tenant-specific datasource at runtime.
+     *
+     * <p>With Liquibase enabled, the tenant is migrated on its new pool before its route is published, under the
+     * tenant's lock rather than the routing monitor. With {@code fail-on-error=true}, a failed migration closes the
+     * new pool, restores the previous credentials provider, keeps the previous route, and returns {@code false}.
      * 
      * @param tenantId
      * @param tenantDatabaseProperties
      * @return
      */
-    public synchronized boolean addOrUpdateTenantDataSource(String tenantId, TenantDatabaseProperties tenantDatabaseProperties) {
+    public boolean addOrUpdateTenantDataSource(String tenantId, TenantDatabaseProperties tenantDatabaseProperties) {
         logger.info("Adding/updating tenant datasource for: " + tenantId);
 
         // Validating multitenancy is enabled
@@ -144,8 +160,14 @@ public class TenantAwareDataSource {
             return false;
         }
 
+        TenantMigrationRunner migrationRunner = migrationRunner();
         try {
-            return performAddOrUpdate(tenantId, tenantDatabaseProperties);
+            if (migrationRunner == null) {
+                synchronized (this) {
+                    return performAddOrUpdate(tenantId, tenantDatabaseProperties);
+                }
+            }
+            return performAddOrUpdateWithMigration(tenantId, tenantDatabaseProperties, migrationRunner);
         } catch (Exception exception) {
             logger.log(Level.SEVERE, "Error adding or update tenant datasource for " + tenantId + ": " + exception.getMessage());
             throw new SqlDaoException("Error adding or update tenant datasource for " + tenantId, exception);
@@ -154,11 +176,14 @@ public class TenantAwareDataSource {
 
     /**
      * Removes a tenant-specific datasource at runtime.
+     *
+     * <p>With Liquibase enabled, the tenant's lock is taken first, so removal cannot interleave with an in-progress
+     * onboarding of the same tenant.
      * 
      * @param tenantId The tenant identifier to remove
      * @return true if operation succeeded, false otherwise
      */
-    public synchronized boolean removeTenantDataSource(String tenantId) {
+    public boolean removeTenantDataSource(String tenantId) {
         logger.info("Remove tenant datasource for: " + tenantId);
 
         // Validate preconditions
@@ -171,11 +196,22 @@ public class TenantAwareDataSource {
             return false;
         }
 
+        TenantMigrationRunner migrationRunner = migrationRunner();
+        Lock tenantLock = migrationRunner != null ? migrationRunner.tenantLock(normalizedTenantId.get()) : null;
+        if (tenantLock != null) {
+            tenantLock.lock();
+        }
         try {
-            return performRemove(normalizedTenantId.get());
+            synchronized (this) {
+                return performRemove(normalizedTenantId.get());
+            }
         } catch (Exception exception) {
             handleOperationError("removing", normalizedTenantId.get(), exception);
             throw new SqlDaoException("Error removing tenant datasource for " + normalizedTenantId.get(), exception);
+        } finally {
+            if (tenantLock != null) {
+                tenantLock.unlock();
+            }
         }
     }
 
@@ -257,6 +293,99 @@ public class TenantAwareDataSource {
         tenantConfigMap.put(tenantId, tenantDatabaseProperties);
         logger.info("Successfully added/updated datasource for tenant: " + tenantId);
         return true;
+    }
+
+    /**
+     * Adds or updates a tenant with Liquibase enabled. Configuration errors are always rejected.
+     */
+    private boolean performAddOrUpdateWithMigration(String tenantId, TenantDatabaseProperties tenantDatabaseProperties,
+            TenantMigrationRunner migrationRunner) throws InterruptedException, SQLException {
+        List<String> configurationErrors = migrationRunner.validateTenant(tenantId, tenantDatabaseProperties);
+        if (!configurationErrors.isEmpty()) {
+            logger.warning("Rejected tenant " + tenantId + ": " + configurationErrors);
+            return false;
+        }
+        Lock tenantLock = migrationRunner.tenantLock(tenantId);
+        tenantLock.lock();
+        try {
+            return migrateAndSwap(tenantId, tenantDatabaseProperties, migrationRunner);
+        } finally {
+            tenantLock.unlock();
+        }
+    }
+
+    /**
+     * Creates the new pool unregistered, migrates the tenant on it, and only then swaps the route. Until the swap,
+     * any failure restores the previous credentials provider and closes the new pool.
+     */
+    private boolean migrateAndSwap(String tenantId, TenantDatabaseProperties tenantDatabaseProperties,
+            TenantMigrationRunner migrationRunner) throws InterruptedException, SQLException {
+        CredentialsProvider previousProvider = postgresDbConfig.findCredentialsProvider(tenantId).orElse(null);
+        DataSource newDataSource = null;
+        boolean registered = false;
+        try {
+            newDataSource = createDataSource(tenantId, tenantDatabaseProperties).orElse(null);
+            if (newDataSource == null) {
+                return false;
+            }
+            testConnection(tenantId, newDataSource);
+            boolean migrated = migrationRunner.migrateTenant(tenantId, tenantDatabaseProperties, newDataSource);
+            if (!migrated && migrationRunner.isFailOnError()) {
+                logger.warning("Migration failed for tenant " + tenantId + "; keeping its previous datasource");
+                return false;
+            }
+            if (!migrated) {
+                logger.warning("Migration failed for tenant " + tenantId
+                        + "; registering it anyway because sqldao.liquibase.fail-on-error=false");
+            }
+            Optional<DataSource> previousDataSource = swapRoute(tenantId, tenantDatabaseProperties, newDataSource);
+            registered = true;
+            previousDataSource.ifPresent(ds -> closeConnection(ds, tenantId));
+            logger.info("Successfully added/updated datasource for tenant: " + tenantId);
+            return true;
+        } finally {
+            if (!registered) {
+                postgresDbConfig.restoreCredentialsProvider(tenantId, previousProvider);
+                closeQuietly(newDataSource, tenantId);
+            }
+        }
+    }
+
+    /**
+     * Publishes the new pool under the routing monitor.
+     *
+     * @return the previous pool, if any
+     */
+    private synchronized Optional<DataSource> swapRoute(String tenantId,
+            TenantDatabaseProperties tenantDatabaseProperties, DataSource newDataSource) {
+        final Optional<DataSource> previousDataSource = Optional.ofNullable(targetDataSources.get(tenantId));
+        updateDataSourceMap(tenantId, newDataSource);
+        refreshTenantRoutingDataSource();
+        tenantConfigMap.put(tenantId, tenantDatabaseProperties);
+        return previousDataSource;
+    }
+
+    private void testConnection(String tenantId, DataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            if (!connection.isValid(CONNECTION_VALIDATION_TIMEOUT_SECONDS)) {
+                throw new SQLException("Connection validation failed for tenant " + tenantId);
+            }
+        }
+    }
+
+    private void closeQuietly(DataSource dataSource, String tenantId) {
+        if (dataSource == null) {
+            return;
+        }
+        try {
+            postgresDbConfig.cleanupDataSource(dataSource);
+        } catch (Exception e) {
+            logger.warning("Error while closing the new datasource for tenant " + tenantId + ": " + e.getMessage());
+        }
+    }
+
+    private TenantMigrationRunner migrationRunner() {
+        return migrationRunnerProvider != null ? migrationRunnerProvider.getIfAvailable() : null;
     }
 
     /**

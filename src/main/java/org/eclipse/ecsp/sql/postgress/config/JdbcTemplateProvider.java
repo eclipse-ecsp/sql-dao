@@ -44,6 +44,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Configurable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
@@ -79,6 +80,7 @@ public class JdbcTemplateProvider {
      * @return the jdbc template
      */
     @Bean("jdbcTemplates")
+    @DependsOnDatabaseInitialization
     public Map<String, JdbcTemplate> constructJdbcTemplates() {
         Map<String, JdbcTemplate> jdbcTemplates = new HashMap<>();
         if (!isMultitenancyEnabled) {
@@ -98,6 +100,7 @@ public class JdbcTemplateProvider {
      * @return map of tenantId to NamedParameterJdbcTemplate
      */
     @Bean("namedParameterJdbcTemplates")
+    @DependsOnDatabaseInitialization
     public Map<String, NamedParameterJdbcTemplate> constructNamedParameterJdbcTemplates() {
         Map<String, NamedParameterJdbcTemplate> namedParameterJdbcTemplates = new HashMap<>();
         if (!isMultitenancyEnabled) {
