@@ -42,6 +42,8 @@ package org.eclipse.ecsp.sql.migration;
 import liquibase.util.LiquibaseUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.ecsp.sql.dao.constants.MigrationConstants;
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.DatabaseTarget;
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -178,7 +180,8 @@ public class MigrationConfigurationValidator {
                 errors.add("sqldao.liquibase.admin." + alias + ".jdbc-url is required");
                 return;
             }
-            String other = aliasByDatabase.putIfAbsent(JdbcUrlNormalizer.normalize(admin.getJdbcUrl()), alias);
+            String database = MigrationDataSourceResolver.normalizeJdbcUrl(admin.getJdbcUrl());
+            String other = aliasByDatabase.putIfAbsent(database, alias);
             if (other != null) {
                 errors.add("sqldao.liquibase.admin." + other + " and sqldao.liquibase.admin." + alias
                         + " point to the same database");

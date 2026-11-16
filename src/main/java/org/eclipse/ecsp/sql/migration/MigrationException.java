@@ -82,4 +82,25 @@ public class MigrationException extends SqlDaoException {
         this.tenantId = tenantId;
         this.errorCode = errorCode;
     }
+
+    /**
+     * Classifies a {@link MigrationException}.
+     */
+    public enum MigrationErrorCode {
+
+        /** The migration configuration is invalid; always fails startup. */
+        INVALID_CONFIGURATION,
+
+        /** A Liquibase update failed, or the tenant could not be migrated. */
+        MIGRATION_FAILED,
+
+        /** A tenant schema could not be created. */
+        SCHEMA_CREATION_FAILED,
+
+        /** A Liquibase rollback failed. */
+        ROLLBACK_FAILED,
+
+        /** The per-schema advisory lock could not be acquired in time. */
+        LOCK_ACQUISITION_FAILED
+    }
 }

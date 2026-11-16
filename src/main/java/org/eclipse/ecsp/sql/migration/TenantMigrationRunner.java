@@ -40,6 +40,8 @@
 package org.eclipse.ecsp.sql.migration;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.MigrationSession;
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -245,7 +247,7 @@ public class TenantMigrationRunner {
         for (Map.Entry<String, TenantDatabaseProperties> entry : new TreeMap<>(tenants).entrySet()) {
             String tenantId = entry.getKey();
             TenantDatabaseProperties tenant = entry.getValue();
-            String databaseKey = JdbcUrlNormalizer.normalize(tenant.getJdbcUrl());
+            String databaseKey = MigrationDataSourceResolver.normalizeJdbcUrl(tenant.getJdbcUrl());
             if (skipDatabases.contains(databaseKey)) {
                 LOGGER.warn("Skipping tenant {}: Phase 1 failed for its database {}", tenantId, databaseKey);
                 failedTenants.add(tenantId);

@@ -56,6 +56,7 @@ import liquibase.lockservice.LockServiceFactory;
 import liquibase.resource.ClassLoaderResourceAccessor;
 import liquibase.ui.LoggerUIService;
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ResourceLoader;
@@ -181,7 +182,7 @@ public class LiquibaseMigrationService {
 
     private static void applySearchPath(Connection connection, List<String> schemas) throws SQLException {
         try (Statement statement = connection.createStatement()) {
-            statement.execute(SqlIdentifiers.setSearchPath(schemas));
+            statement.execute(SchemaProvisioningService.setSearchPath(schemas));
         }
     }
 

@@ -39,6 +39,9 @@
 
 package org.eclipse.ecsp.sql.migration;
 
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.AdminDataSourceProperties;
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.MigrationRetryProperties;
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.StartupMode;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Bindable;

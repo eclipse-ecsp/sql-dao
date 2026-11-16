@@ -41,6 +41,9 @@ package org.eclipse.ecsp.sql.migration;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.MigrationSession;
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.AdminDataSourceProperties;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;

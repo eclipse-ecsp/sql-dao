@@ -39,6 +39,7 @@
 
 package org.eclipse.ecsp.sql.migration;
 
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -48,6 +49,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -150,5 +152,19 @@ class SchemaProvisioningServiceTest {
     void ensureSchemaValidatesBeforeTouchingTheDatabase() throws SQLException {
         assertThrows(MigrationException.class, () -> service.ensureSchema(connection, "t1", "Bad-Name"));
         verify(connection, never()).prepareStatement(anyString());
+    }
+
+    @Test
+    void quotesIdentifiers() {
+        assertEquals("\"tenant_1\"", SchemaProvisioningService.quote("tenant_1"));
+        assertEquals("SET search_path TO \"tenant_1\", \"public\"",
+                SchemaProvisioningService.setSearchPath(List.of("tenant_1", "public")));
+    }
+
+    @Test
+    void escapesEmbeddedQuotesSoNameCannotEndIdentifierEarly() {
+        assertEquals("\"a\"\"; DROP SCHEMA x; --\"", SchemaProvisioningService.quote("a\"; DROP SCHEMA x; --"));
+        assertEquals("SET search_path TO \"a\"\"b\", \"public\"",
+                SchemaProvisioningService.setSearchPath(List.of("a\"b", "public")));
     }
 }

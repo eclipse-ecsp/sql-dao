@@ -39,6 +39,8 @@
 
 package org.eclipse.ecsp.sql.migration;
 
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.MigrationRetryProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.sql.SQLException;

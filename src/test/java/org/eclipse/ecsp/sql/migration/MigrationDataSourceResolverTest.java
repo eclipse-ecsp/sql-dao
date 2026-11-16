@@ -42,6 +42,10 @@ package org.eclipse.ecsp.sql.migration;
 import com.zaxxer.hikari.HikariDataSource;
 import org.eclipse.ecsp.sql.authentication.CredentialsProvider;
 import org.eclipse.ecsp.sql.dao.utils.SqlDaoUtils;
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.DatabaseTarget;
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.MigrationSession;
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.AdminDataSourceProperties;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import static org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.normalizeJdbcUrl;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -189,6 +194,50 @@ class MigrationDataSourceResolverTest {
         verify(provider).refreshCredentials();
         verify(provider).getUserName();
         verify(provider).getPassword();
+    }
+
+    @Test
+    void stripsQueryParametersAndLowerCasesHost() {
+        assertEquals("db-host:5432/appdb",
+                normalizeJdbcUrl("jdbc:postgresql://DB-Host:5432/appdb?sslmode=require&user=x"));
+    }
+
+    @Test
+    void defaultsMissingPort() {
+        assertEquals("db-host:5432/appdb", normalizeJdbcUrl("jdbc:postgresql://db-host/appdb"));
+    }
+
+    @Test
+    void sortsMultipleHosts() {
+        assertEquals("h1:5432,h2:5433/appdb", normalizeJdbcUrl("jdbc:postgresql://H2:5433,h1/appdb"));
+    }
+
+    @Test
+    void keepsBracketedIpv6Hosts() {
+        assertEquals("[::1]:5433/appdb", normalizeJdbcUrl("jdbc:postgresql://[::1]:5433/appdb"));
+        assertEquals("[::1]:5432/appdb", normalizeJdbcUrl("jdbc:postgresql://[::1]/appdb"));
+    }
+
+    @Test
+    void defaultsHostForUrlWithoutAuthority() {
+        assertEquals("localhost:5432/appdb", normalizeJdbcUrl("jdbc:postgresql:appdb"));
+    }
+
+    @Test
+    void keepsDatabaseNameCase() {
+        assertEquals("db-host:5432/AppDb", normalizeJdbcUrl("jdbc:postgresql://db-host/AppDb"));
+    }
+
+    @Test
+    void returnsEmptyForBlankUrl() {
+        assertEquals("", normalizeJdbcUrl(null));
+        assertEquals("", normalizeJdbcUrl(" "));
+    }
+
+    @Test
+    void differentSpellingsOfOneDatabaseMatch() {
+        assertEquals(normalizeJdbcUrl("jdbc:postgresql://db-host/appdb"),
+                normalizeJdbcUrl("JDBC:POSTGRESQL://DB-HOST:5432/appdb?currentSchema=x"));
     }
 
     private static AdminDataSourceProperties admin(String jdbcUrl) {

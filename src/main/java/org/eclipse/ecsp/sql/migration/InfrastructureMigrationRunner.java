@@ -40,6 +40,8 @@
 package org.eclipse.ecsp.sql.migration;
 
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.DatabaseTarget;
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.MigrationSession;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

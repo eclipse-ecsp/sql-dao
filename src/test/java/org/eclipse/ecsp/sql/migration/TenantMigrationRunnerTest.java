@@ -39,6 +39,10 @@
 
 package org.eclipse.ecsp.sql.migration;
 
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.DatabaseTarget;
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.MigrationSession;
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.MigrationRetryProperties;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,6 +61,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
+import static org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.normalizeJdbcUrl;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -157,7 +162,7 @@ class TenantMigrationRunnerTest {
     @Test
     void skipsTenantsOfFailedDatabases() {
         Set<String> failed = runner.migrateAllTenants(Map.of("t1", tenant(DB_A, "tenant1"),
-                "t2", tenant(DB_B, "tenant2")), Set.of(JdbcUrlNormalizer.normalize(DB_A)), session);
+                "t2", tenant(DB_B, "tenant2")), Set.of(normalizeJdbcUrl(DB_A)), session);
         assertEquals(Set.of("t1"), failed);
         assertEquals(List.of("t2"), migrated);
     }
@@ -226,7 +231,7 @@ class TenantMigrationRunnerTest {
         tenants.put("t2", tenant(DB_A, "shared_schema"));
         tenants.put("t3", tenant(DB_A, "tenant3"));
         tenants.put("t4", tenant(DB_B, "tenant4"));
-        Set<String> failed = runner.migrateAllTenants(tenants, Set.of(JdbcUrlNormalizer.normalize(DB_B)), session);
+        Set<String> failed = runner.migrateAllTenants(tenants, Set.of(normalizeJdbcUrl(DB_B)), session);
         assertEquals(Set.of("t4"), failed);
         assertEquals(List.of("t1", "t3"), migrated.stream().sorted().toList());
     }

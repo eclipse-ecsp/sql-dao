@@ -42,6 +42,7 @@ package org.eclipse.ecsp.sql.migration;
 import lombok.Getter;
 import lombok.Setter;
 import org.eclipse.ecsp.sql.dao.constants.MigrationConstants;
+import org.eclipse.ecsp.sql.dao.constants.PostgresDbConstants;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.HashMap;
 import java.util.Map;
@@ -106,4 +107,68 @@ public class SqlDaoLiquibaseProperties {
 
     /** Privileged datasources by alias. */
     private Map<String, AdminDataSourceProperties> admin = new HashMap<>();
+
+    /**
+     * Retry of failed migrations, bound from {@code sqldao.liquibase.retry.*}.
+     */
+    @Getter
+    @Setter
+    public static class MigrationRetryProperties {
+
+        /** Default number of attempts, including the first one. */
+        public static final int DEFAULT_MAX_ATTEMPTS = 3;
+
+        /** Default wait between attempts, in milliseconds. */
+        public static final long DEFAULT_DELAY_MS = 5000L;
+
+        /** Total attempts per schema, including the first; {@code 1} disables retries. */
+        private int maxAttempts = DEFAULT_MAX_ATTEMPTS;
+
+        /** Fixed wait between attempts, in milliseconds. */
+        private long delayMs = DEFAULT_DELAY_MS;
+    }
+
+    /**
+     * Privileged datasource used to run migrations, bound from {@code sqldao.liquibase.admin.<alias>.*}.
+     */
+    @Getter
+    @Setter
+    public static class AdminDataSourceProperties {
+
+        /** Default maximum pool size; covers sequential migrations. Raised to {@code sqldao.liquibase.parallelism}. */
+        public static final int DEFAULT_MAX_POOL_SIZE = 2;
+
+        /** JDBC URL of the database this admin user migrates. */
+        private String jdbcUrl;
+
+        /** Admin user name, used when no credentials provider is configured. */
+        private String userName;
+
+        /** Admin password, used when no credentials provider is configured. */
+        private String password;
+
+        /** Optional {@code CredentialsProvider} class used instead of {@code user-name}/{@code password}. */
+        private String credentialProviderBeanName;
+
+        /** JDBC driver class name. */
+        private String driverClassName = PostgresDbConstants.DEFAULT_DRIVER_CLASS_NAME;
+
+        /** Minimum idle connections; admin pools keep none by default. */
+        private int minPoolSize;
+
+        /** Maximum pool size; the effective size is at least {@code sqldao.liquibase.parallelism}. */
+        private int maxPoolSize = DEFAULT_MAX_POOL_SIZE;
+    }
+
+    /**
+     * When startup migrations run, selected by {@code sqldao.liquibase.startup-mode}.
+     */
+    public enum StartupMode {
+
+        /** Migrations run during bean initialization, before beans that depend on database initialization. */
+        BLOCKING,
+
+        /** Migrations run on a background thread once the application accepts traffic. */
+        AFTER_READY
+    }
 }

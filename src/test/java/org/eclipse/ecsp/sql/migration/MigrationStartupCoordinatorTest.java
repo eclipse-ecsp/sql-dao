@@ -39,6 +39,9 @@
 
 package org.eclipse.ecsp.sql.migration;
 
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.MigrationSession;
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.StartupMode;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

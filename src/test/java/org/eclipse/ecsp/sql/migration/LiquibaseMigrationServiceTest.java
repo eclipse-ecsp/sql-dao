@@ -39,6 +39,7 @@
 
 package org.eclipse.ecsp.sql.migration;
 
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -83,7 +84,7 @@ class LiquibaseMigrationServiceTest {
     @Test
     void buildsQuotedSearchPath() {
         assertEquals("SET search_path TO \"tenant1\", \"public\"",
-                SqlIdentifiers.setSearchPath(List.of("tenant1", "public")));
+                SchemaProvisioningService.setSearchPath(List.of("tenant1", "public")));
     }
 
     @Test

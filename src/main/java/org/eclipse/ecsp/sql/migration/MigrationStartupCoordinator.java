@@ -40,6 +40,8 @@
 package org.eclipse.ecsp.sql.migration;
 
 import org.eclipse.ecsp.sql.dao.constants.MultitenantConstants;
+import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.MigrationSession;
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.StartupMode;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

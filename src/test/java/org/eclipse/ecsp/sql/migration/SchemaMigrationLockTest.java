@@ -40,6 +40,7 @@
 package org.eclipse.ecsp.sql.migration;
 
 import com.zaxxer.hikari.HikariDataSource;
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.sql.Connection;

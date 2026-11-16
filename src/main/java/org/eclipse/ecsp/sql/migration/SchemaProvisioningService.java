@@ -39,6 +39,7 @@
 
 package org.eclipse.ecsp.sql.migration;
 
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -47,8 +48,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Validates schema names and creates missing tenant schemas (Phase 2).
@@ -129,7 +132,7 @@ public class SchemaProvisioningService {
                 return;
             }
             try (Statement statement = connection.createStatement()) {
-                statement.execute("CREATE SCHEMA IF NOT EXISTS " + SqlIdentifiers.quote(schema));
+                statement.execute("CREATE SCHEMA IF NOT EXISTS " + quote(schema));
             }
             LOGGER.info("Created schema {} for tenant {}", schema, tenantId);
         } catch (SQLException e) {
@@ -140,6 +143,27 @@ public class SchemaProvisioningService {
             throw new MigrationException("Failed to create schema " + schema + " for tenant " + tenantId,
                     tenantId, MigrationErrorCode.SCHEMA_CREATION_FAILED, e);
         }
+    }
+
+    /**
+     * Quotes an identifier, doubling any embedded double quote so that it cannot end the identifier early.
+     *
+     * @param identifier the identifier
+     * @return the quoted identifier
+     */
+    static String quote(String identifier) {
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
+    }
+
+    /**
+     * Builds {@code SET search_path TO "a", "b"}.
+     *
+     * @param schemas the schema names, in search order
+     * @return the {@code SET search_path} statement
+     */
+    static String setSearchPath(List<String> schemas) {
+        return "SET search_path TO " + schemas.stream().map(SchemaProvisioningService::quote)
+                .collect(Collectors.joining(", "));
     }
 
     private static boolean schemaExists(Connection connection, String schema) throws SQLException {

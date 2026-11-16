@@ -44,18 +44,24 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.ecsp.sql.authentication.CredentialsProvider;
 import org.eclipse.ecsp.sql.dao.utils.SqlDaoUtils;
+import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
+import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.AdminDataSourceProperties;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.stereotype.Component;
+import javax.sql.DataSource;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Resolves the connection that migrates each tenant and each database.
@@ -70,6 +76,10 @@ public class MigrationDataSourceResolver implements DisposableBean {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MigrationDataSourceResolver.class);
     private static final String ADMIN_POOL_PREFIX = "sqldao-migration-admin-";
+    private static final String POSTGRES_PREFIX = "jdbc:postgresql:";
+    private static final String AUTHORITY_PREFIX = "//";
+    private static final String DEFAULT_HOST = "localhost";
+    private static final String DEFAULT_PORT = "5432";
 
     private final SqlDaoLiquibaseProperties properties;
     private final SqlDaoUtils utils;
@@ -117,9 +127,9 @@ public class MigrationDataSourceResolver implements DisposableBean {
      * @return the alphabetically first matching alias, or empty
      */
     public Optional<String> findAliasByUrl(String jdbcUrl) {
-        String key = JdbcUrlNormalizer.normalize(jdbcUrl);
+        String key = normalizeJdbcUrl(jdbcUrl);
         return this.properties.getAdmin().entrySet().stream()
-                .filter(entry -> key.equals(JdbcUrlNormalizer.normalize(entry.getValue().getJdbcUrl())))
+                .filter(entry -> key.equals(normalizeJdbcUrl(entry.getValue().getJdbcUrl())))
                 .map(Map.Entry::getKey)
                 .sorted()
                 .findFirst();
@@ -134,7 +144,7 @@ public class MigrationDataSourceResolver implements DisposableBean {
     public List<DatabaseTarget> distinctDatabases(Map<String, TenantDatabaseProperties> tenants) {
         Map<String, List<Map.Entry<String, TenantDatabaseProperties>>> byDatabase = new TreeMap<>();
         new TreeMap<>(tenants).entrySet().forEach(entry -> byDatabase
-                .computeIfAbsent(JdbcUrlNormalizer.normalize(entry.getValue().getJdbcUrl()), key -> new ArrayList<>())
+                .computeIfAbsent(normalizeJdbcUrl(entry.getValue().getJdbcUrl()), key -> new ArrayList<>())
                 .add(entry));
         List<DatabaseTarget> targets = new ArrayList<>();
         byDatabase.forEach((key, entries) -> targets.add(toTarget(key, entries)));
@@ -225,10 +235,147 @@ public class MigrationDataSourceResolver implements DisposableBean {
     }
 
     /**
+     * Reduces a PostgreSQL JDBC URL to {@code host:port/database}, so that tenants of one database can be grouped.
+     *
+     * <p>Query parameters are stripped, hosts are lower-cased, a missing port defaults to {@code 5432}, and
+     * multi-host URLs use the sorted host list. De-duplication is an optimization: two URLs for the same database
+     * that normalize differently only cause a second, no-op Phase 1 run.
+     *
+     *
+     * @param jdbcUrl the JDBC URL, may be {@code null}
+     * @return {@code host:port[,host:port...]/database}, or an empty string for a blank URL
+     */
+    public static String normalizeJdbcUrl(String jdbcUrl) {
+        if (StringUtils.isBlank(jdbcUrl)) {
+            return "";
+        }
+        String url = StringUtils.substringBefore(jdbcUrl.trim(), "?");
+        if (!url.regionMatches(true, 0, POSTGRES_PREFIX, 0, POSTGRES_PREFIX.length())) {
+            return url.toLowerCase(Locale.ROOT);
+        }
+        String rest = url.substring(POSTGRES_PREFIX.length());
+        if (!rest.startsWith(AUTHORITY_PREFIX)) {
+            return DEFAULT_HOST + ":" + DEFAULT_PORT + "/" + StringUtils.removeStart(rest, "/");
+        }
+        String authority = rest.substring(AUTHORITY_PREFIX.length());
+        String hosts = StringUtils.substringBefore(authority, "/");
+        String database = authority.contains("/") ? StringUtils.substringAfter(authority, "/") : "";
+        return normalizeHosts(hosts) + "/" + database;
+    }
+
+    private static String normalizeHosts(String hosts) {
+        String normalized = Arrays.stream(hosts.split(","))
+                .map(String::trim)
+                .filter(host -> !host.isEmpty())
+                .map(MigrationDataSourceResolver::normalizeHost)
+                .sorted()
+                .collect(Collectors.joining(","));
+        return normalized.isEmpty() ? DEFAULT_HOST + ":" + DEFAULT_PORT : normalized;
+    }
+
+    private static String normalizeHost(String hostAndPort) {
+        String value = hostAndPort.toLowerCase(Locale.ROOT);
+        // IPv6 hosts are bracketed; look for the port separator after the closing bracket.
+        int searchFrom = value.startsWith("[") ? Math.max(value.indexOf(']'), 0) : 0;
+        int portSeparator = value.indexOf(':', searchFrom);
+        if (portSeparator < 0) {
+            return value + ":" + DEFAULT_PORT;
+        }
+        String host = value.substring(0, portSeparator);
+        String port = value.substring(portSeparator + 1);
+        return host + ":" + (port.isEmpty() ? DEFAULT_PORT : port);
+    }
+
+    /**
      * Closes admin pools of sessions that are still open at shutdown.
      */
     @Override
     public void destroy() {
         new ArrayList<>(this.openSessions).forEach(MigrationSession::close);
+    }
+
+    /**
+     * A distinct database that Phase 1 migrates once, with the tenants that live in it.
+     *
+     * @param key normalized JDBC URL ({@code host:port/database})
+     * @param jdbcUrl JDBC URL of one of its tenants
+     * @param tenantIds tenants in this database, sorted
+     * @param adminAlias admin alias resolved for Phase 1, or {@code null} when none resolves
+     */
+    public record DatabaseTarget(String key, String jdbcUrl, List<String> tenantIds,
+                                 String adminAlias) {
+    }
+
+    /**
+     * One migration run (the startup run, or one runtime onboarding) and the admin pools it created.
+     *
+     * <p>Admin pools are created lazily and closed with the session, so concurrent runs never close each other's
+     * pools and no admin pool outlives the run that needed it.
+     */
+    public static class MigrationSession implements AutoCloseable {
+
+        private final MigrationDataSourceResolver resolver;
+        private final Map<String, HikariDataSource> adminPools = new ConcurrentHashMap<>();
+
+        /**
+         * Creates a session; use {@link MigrationDataSourceResolver#openSession()}.
+         *
+         * @param resolver the owning resolver
+         */
+        MigrationSession(MigrationDataSourceResolver resolver) {
+            this.resolver = resolver;
+        }
+
+        /**
+         * Resolves the datasource that migrates a tenant (Phases 2 and 3, rollback).
+         *
+         * @param tenantId the tenant identifier
+         * @param tenantProperties the tenant properties
+         * @param tenantPool the tenant's own pool, may be {@code null} if it failed to initialize
+         * @return an admin pool or the tenant pool
+         * @throws MigrationException with {@link MigrationErrorCode#MIGRATION_FAILED} if no datasource applies
+         */
+        public DataSource resolve(String tenantId, TenantDatabaseProperties tenantProperties, DataSource tenantPool) {
+            return this.resolver.resolveAdminAlias(tenantProperties)
+                    .<DataSource>map(this::adminPool)
+                    .orElseGet(() -> requireTenantPool(tenantId, tenantPool));
+        }
+
+        /**
+         * Resolves the admin pool that runs Phase 1 for a database.
+         *
+         * @param target the database
+         * @return the admin pool
+         * @throws MigrationException with {@link MigrationErrorCode#INVALID_CONFIGURATION} if no admin alias resolves
+         */
+        public DataSource resolveForDatabase(DatabaseTarget target) {
+            if (target.adminAlias() == null) {
+                throw new MigrationException("No admin alias resolves for database " + target.key()
+                        + "; Phase 1 never runs on a tenant pool", null, MigrationErrorCode.INVALID_CONFIGURATION);
+            }
+            return adminPool(target.adminAlias());
+        }
+
+        /**
+         * Closes the admin pools created by this session.
+         */
+        @Override
+        public void close() {
+            this.adminPools.values().forEach(HikariDataSource::close);
+            this.adminPools.clear();
+            this.resolver.sessionClosed(this);
+        }
+
+        private HikariDataSource adminPool(String alias) {
+            return this.adminPools.computeIfAbsent(alias, this.resolver::createAdminPool);
+        }
+
+        private static DataSource requireTenantPool(String tenantId, DataSource tenantPool) {
+            if (tenantPool == null) {
+                throw new MigrationException("Tenant " + tenantId + " has no datasource to migrate with, because its "
+                        + "datasource failed to initialize", tenantId, MigrationErrorCode.MIGRATION_FAILED);
+            }
+            return tenantPool;
+        }
     }
 }
