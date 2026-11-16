@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="1-customers" author="sql-dao">
+        <createTable tableName="customers">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="text"/>
+        </createTable>
+    </changeSet>
+
+    <!-- gin_trgm_ops comes from the pg_trgm extension that the public changelog installs; it is deliberately
+         referenced without a schema, so it only resolves when the search path is the tenant schema, then public. -->
+    <changeSet id="2-name-index" author="sql-dao">
+        <sql>CREATE INDEX customers_name_trgm ON customers USING gin (name gin_trgm_ops)</sql>
+        <rollback>DROP INDEX customers_name_trgm</rollback>
+    </changeSet>
+
+    <!-- A primary key makes applying this changeset twice fail, which is what the concurrency tests look for. -->
+    <changeSet id="3-seed" author="sql-dao">
+        <sql>INSERT INTO customers (id, name) VALUES (1, 'seed')</sql>
+        <rollback>DELETE FROM customers WHERE id = 1</rollback>
+    </changeSet>
+</databaseChangeLog>

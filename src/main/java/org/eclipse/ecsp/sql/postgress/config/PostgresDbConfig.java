@@ -48,6 +48,7 @@ import jakarta.annotation.PreDestroy;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.ecsp.sql.authentication.CredentialsProvider;
 import org.eclipse.ecsp.sql.dao.constants.HealthConstants;
+import org.eclipse.ecsp.sql.dao.constants.MigrationConstants;
 import org.eclipse.ecsp.sql.dao.constants.MultitenantConstants;
 import org.eclipse.ecsp.sql.dao.constants.PostgresDbConstants;
 import org.eclipse.ecsp.sql.dao.utils.SqlDaoUtils;
@@ -74,11 +75,13 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import static org.eclipse.ecsp.sql.dao.constants.PostgresDbConstants.ONE_WAY_TLS_AUTH_MECHANISM;
+import static org.postgresql.PGProperty.CURRENT_SCHEMA;
 import static org.postgresql.PGProperty.SSL;
 import static org.postgresql.PGProperty.SSL_MODE;
 import static org.postgresql.PGProperty.SSL_RESPONSE_TIMEOUT;
@@ -127,6 +130,14 @@ public class PostgresDbConfig {
     /** Flag to enable or disable multi-tenancy */
     @Value("${" + MultitenantConstants.MULTITENANCY_ENABLED + ":false}")
     private boolean isMultitenancyEnabled;
+
+    /** Whether Liquibase migration support is enabled; it puts the shared schema on tenant search paths. */
+    @Value("${" + MigrationConstants.LIQUIBASE_ENABLED + ":false}")
+    private boolean liquibaseEnabled;
+
+    /** Shared schema that follows the tenant schema on the search path when Liquibase is enabled. */
+    @Value("${" + MigrationConstants.LIQUIBASE_PUBLIC_SCHEMA + ":" + MigrationConstants.DEFAULT_PUBLIC_SCHEMA + "}")
+    private String publicSchema = MigrationConstants.DEFAULT_PUBLIC_SCHEMA;
 
     /** The Constant LOGGER. */
     private static final Logger LOGGER = LoggerFactory.getLogger(PostgresDbConfig.class);
@@ -473,13 +484,23 @@ public class PostgresDbConfig {
      * @return the data source
      */
     public DataSource createAndGetDataSource(DatabaseProperties dbProperties) {
+        return new HikariDataSource(buildHikariConfig(dbProperties));
+    }
+
+    /**
+     * Builds the Hikari configuration for a tenant pool.
+     *
+     * @param dbProperties the tenant database properties
+     * @return the Hikari configuration
+     */
+    HikariConfig buildHikariConfig(DatabaseProperties dbProperties) {
 
         HikariConfig config = new HikariConfig();
 
         config.setJdbcUrl(dbProperties.getJdbcUrl());
         // validate() already ensures schema, if set, is non-blank
         if (dbProperties.getSchema() != null) {
-            config.setSchema(dbProperties.getSchema());
+            applySchema(config, dbProperties.getSchema());
         }
         config.setUsername(dbProperties.getUserName());
         config.setPassword(dbProperties.getPassword());
@@ -515,7 +536,20 @@ public class PostgresDbConfig {
                     dbProperties.getSslMode(), dbProperties.getSslResponseTimeout(),
                     dbProperties.getRootCrtPath());
         }
-        return new HikariDataSource(config);
+        return config;
+    }
+
+    /**
+     * Applies the tenant schema to every pooled connection. With Liquibase enabled, the search path becomes
+     * {@code <schema>,<public-schema>} so that shared objects created by Phase 1 (extensions, shared functions)
+     * resolve unqualified; {@code HikariConfig.setSchema} would leave only the tenant schema on the search path.
+     */
+    private void applySchema(HikariConfig config, String schema) {
+        if (liquibaseEnabled && StringUtils.isNotBlank(publicSchema) && !schema.equals(publicSchema)) {
+            config.addDataSourceProperty(CURRENT_SCHEMA.getName(), schema + "," + publicSchema);
+        } else {
+            config.setSchema(schema);
+        }
     }
 
     /**
@@ -578,5 +612,31 @@ public class PostgresDbConfig {
         LOGGER.info("Removing credentials provider for tenant: {}", tenantId);
         credsProviderMap.remove(tenantId);
         LOGGER.info("Successfully removed credentials provider for tenant: {}", tenantId);
+    }
+
+    /**
+     * Returns the credentials provider currently registered for a tenant.
+     *
+     * @param tenantId The unique identifier for the tenant
+     * @return the registered provider, or empty
+     */
+    public Optional<CredentialsProvider> findCredentialsProvider(String tenantId) {
+        return Optional.ofNullable(credsProviderMap.get(tenantId));
+    }
+
+    /**
+     * Restores a tenant's previous credentials provider after a failed onboarding, so that the scheduled
+     * credentials refresh never applies the new credentials to the previous pool.
+     *
+     * @param tenantId The unique identifier for the tenant
+     * @param previous The previous provider, or {@code null} to remove the tenant's provider
+     */
+    public void restoreCredentialsProvider(String tenantId, @Nullable CredentialsProvider previous) {
+        if (previous == null) {
+            credsProviderMap.remove(tenantId);
+        } else {
+            credsProviderMap.put(tenantId, previous);
+        }
+        LOGGER.info("Restored previous credentials provider for tenant: {}", tenantId);
     }
 }
