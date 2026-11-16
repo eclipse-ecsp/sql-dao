@@ -66,9 +66,6 @@ public class TenantDatabaseProperties implements DatabaseProperties {
 	// PostgreSQL schema for the tenant's database connection
 	private String schema;
 
-	// Liquibase admin alias (sqldao.liquibase.admin.<alias>) used to migrate this tenant
-	private String migrationAdmin;
-
 	// Username for the tenant's database
 	private String userName;
 

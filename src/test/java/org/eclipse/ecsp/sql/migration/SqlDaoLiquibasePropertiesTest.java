@@ -57,6 +57,9 @@ class SqlDaoLiquibasePropertiesTest {
 
     private static final int LOCK_TIMEOUT = 120;
     private static final int LOCK_WAIT = 7;
+    private static final int PARALLELISM = 4;
+    private static final int RETRY_ATTEMPTS = 5;
+    private static final long RETRY_DELAY = 250L;
 
     @Test
     void hasDocumentedDefaults() {
@@ -66,28 +69,33 @@ class SqlDaoLiquibasePropertiesTest {
         assertNull(properties.getPublicChangeLog());
         assertEquals("public", properties.getPublicSchema());
         assertTrue(properties.isRunOnStartup());
-        assertFalse(properties.isProvisionSchemas());
         assertEquals(StartupMode.BLOCKING, properties.getStartupMode());
         assertTrue(properties.isFailOnError());
         assertEquals(SqlDaoLiquibaseProperties.DEFAULT_LOCK_TIMEOUT_SECONDS, properties.getLockTimeoutSeconds());
+        assertEquals(1, properties.getParallelism());
         assertTrue(properties.isReleaseStaleLocks());
         assertEquals(SqlDaoLiquibaseProperties.DEFAULT_CHANGELOG_LOCK_WAIT_MINUTES,
                 properties.getChangelogLockWaitMinutes());
         assertTrue(properties.getAdmin().isEmpty());
+        assertEquals(MigrationRetryProperties.DEFAULT_MAX_ATTEMPTS, properties.getRetry().getMaxAttempts());
+        assertEquals(MigrationRetryProperties.DEFAULT_DELAY_MS, properties.getRetry().getDelayMs());
     }
 
     @Test
     void bindsKebabCasePropertiesAndAdminAliases() {
-        Map<String, String> source = Map.of(
-                "sqldao.liquibase.enabled", "true",
-                "sqldao.liquibase.change-log", "classpath:db/changelog/db.changelog-tenant.xml",
-                "sqldao.liquibase.startup-mode", "after-ready",
-                "sqldao.liquibase.lock-timeout-seconds", String.valueOf(LOCK_TIMEOUT),
-                "sqldao.liquibase.release-stale-locks", "false",
-                "sqldao.liquibase.changelog-lock-wait-minutes", String.valueOf(LOCK_WAIT),
-                "sqldao.liquibase.admin.appdb.jdbc-url", "jdbc:postgresql://db-host:5432/appdb",
-                "sqldao.liquibase.admin.appdb.user-name", "admin",
-                "sqldao.liquibase.admin.appdb.credential-provider-bean-name", "com.example.Vault");
+        Map<String, String> source = Map.ofEntries(
+                Map.entry("sqldao.liquibase.enabled", "true"),
+                Map.entry("sqldao.liquibase.change-log", "classpath:db/changelog/db.changelog-tenant.xml"),
+                Map.entry("sqldao.liquibase.startup-mode", "after-ready"),
+                Map.entry("sqldao.liquibase.lock-timeout-seconds", String.valueOf(LOCK_TIMEOUT)),
+                Map.entry("sqldao.liquibase.release-stale-locks", "false"),
+                Map.entry("sqldao.liquibase.changelog-lock-wait-minutes", String.valueOf(LOCK_WAIT)),
+                Map.entry("sqldao.liquibase.parallelism", String.valueOf(PARALLELISM)),
+                Map.entry("sqldao.liquibase.retry.max-attempts", String.valueOf(RETRY_ATTEMPTS)),
+                Map.entry("sqldao.liquibase.retry.delay-ms", String.valueOf(RETRY_DELAY)),
+                Map.entry("sqldao.liquibase.admin.appdb.jdbc-url", "jdbc:postgresql://db-host:5432/appdb"),
+                Map.entry("sqldao.liquibase.admin.appdb.user-name", "admin"),
+                Map.entry("sqldao.liquibase.admin.appdb.credential-provider-bean-name", "com.example.Vault"));
         SqlDaoLiquibaseProperties properties = new Binder(new MapConfigurationPropertySource(source))
                 .bind("sqldao.liquibase", SqlDaoLiquibaseProperties.class).get();
         assertTrue(properties.isEnabled());
@@ -95,6 +103,9 @@ class SqlDaoLiquibasePropertiesTest {
         assertEquals(LOCK_TIMEOUT, properties.getLockTimeoutSeconds());
         assertFalse(properties.isReleaseStaleLocks());
         assertEquals(LOCK_WAIT, properties.getChangelogLockWaitMinutes());
+        assertEquals(PARALLELISM, properties.getParallelism());
+        assertEquals(RETRY_ATTEMPTS, properties.getRetry().getMaxAttempts());
+        assertEquals(RETRY_DELAY, properties.getRetry().getDelayMs());
         AdminDataSourceProperties admin = properties.getAdmin().get("appdb");
         assertEquals("jdbc:postgresql://db-host:5432/appdb", admin.getJdbcUrl());
         assertEquals("admin", admin.getUserName());
@@ -104,14 +115,4 @@ class SqlDaoLiquibasePropertiesTest {
         assertEquals(AdminDataSourceProperties.DEFAULT_MAX_POOL_SIZE, admin.getMaxPoolSize());
     }
 
-    @Test
-    void bindsTenantMigrationAdmin() {
-        Map<String, String> source = Map.of("tenants.profile.tenant1.migration-admin", "ordersdb",
-                "tenants.profile.tenant1.schema", "orders_eu");
-        TenantDatabaseProperties tenant = new Binder(new MapConfigurationPropertySource(source))
-                .bind("tenants.profile", Bindable.mapOf(String.class, TenantDatabaseProperties.class)).get()
-                .get("tenant1");
-        assertEquals("ordersdb", tenant.getMigrationAdmin());
-        assertEquals("orders_eu", tenant.getSchema());
-    }
 }

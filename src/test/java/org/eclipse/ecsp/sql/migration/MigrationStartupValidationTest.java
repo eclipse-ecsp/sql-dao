@@ -44,6 +44,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -58,6 +59,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MigrationStartupValidationTest {
 
     private static final String APP_DB = "jdbc:postgresql://db-host:5432/appdb";
+    private static final long NEGATIVE_DELAY = -5L;
 
     private SqlDaoLiquibaseProperties properties;
     private MockEnvironment environment;
@@ -71,7 +73,7 @@ class MigrationStartupValidationTest {
         properties.setChangeLog("classpath:db/changelog/db.changelog-tenant.xml");
         environment = new MockEnvironment();
         validator = new MigrationConfigurationValidator(properties, new MigrationDataSourceResolver(properties, null),
-                new SchemaProvisioningService(properties), environment);
+                environment);
         tenants = new HashMap<>();
         tenants.put("tenant1", tenant(APP_DB, "tenant1_schema"));
         tenants.put("tenant2", tenant(APP_DB, "tenant2_schema"));
@@ -82,6 +84,21 @@ class MigrationStartupValidationTest {
         properties.setPublicChangeLog("classpath:db/changelog/db.changelog-public.xml");
         properties.getAdmin().put("appdb", admin(APP_DB));
         assertDoesNotThrow(() -> validator.validate(tenants));
+    }
+
+    @Test
+    void requiresAtLeastOneMigrationWorker() {
+        properties.setParallelism(0);
+        assertInvalid("sqldao.liquibase.parallelism must be at least 1");
+    }
+
+    @Test
+    void requiresOneRetryAttemptAndNonNegativeDelay() {
+        properties.getRetry().setMaxAttempts(0);
+        properties.getRetry().setDelayMs(NEGATIVE_DELAY);
+        MigrationException exception = assertThrows(MigrationException.class, () -> validator.validate(tenants));
+        assertTrue(exception.getMessage().contains("sqldao.liquibase.retry.max-attempts must be at least 1"));
+        assertTrue(exception.getMessage().contains("sqldao.liquibase.retry.delay-ms must not be negative"));
     }
 
     @Test
@@ -112,43 +129,17 @@ class MigrationStartupValidationTest {
     }
 
     @Test
-    void rejectsDifferentExplicitAliasesInOneDatabase() {
-        properties.setPublicChangeLog("classpath:db/changelog/db.changelog-public.xml");
-        properties.getAdmin().put("first", admin("jdbc:postgresql://pgbouncer-1/appdb"));
-        properties.getAdmin().put("second", admin("jdbc:postgresql://pgbouncer-2/appdb"));
-        tenants.get("tenant1").setMigrationAdmin("first");
-        tenants.get("tenant2").setMigrationAdmin("second");
-        assertInvalid("name different migration-admin aliases");
-    }
-
-    @Test
-    void rejectsExplicitAdminForTenantWithoutSchema() {
-        properties.getAdmin().put("appdb", admin(APP_DB));
-        TenantDatabaseProperties tenant = tenant(APP_DB, null);
-        tenant.setMigrationAdmin("appdb");
-        tenants.put("tenant3", tenant);
-        assertInvalid("migration-admin requires a schema");
-    }
-
-    @Test
-    void rejectsUnknownAlias() {
-        tenants.get("tenant1").setMigrationAdmin("missing");
-        assertInvalid("migration-admin 'missing' is not defined");
-    }
-
-    @Test
     void rejectsCurrentSchemaInTenantUrl() {
         tenants.put("tenant3", tenant(APP_DB + "?currentSchema=other", "tenant3_schema"));
         assertInvalid("must not carry currentSchema");
     }
 
     @Test
-    void rejectsInvalidTenantSchemaAndSharedSchemaAsTenantSchema() {
+    void doesNotValidateSchemaNamesAtStartup() {
         tenants.put("tenant3", tenant(APP_DB, "Tenant3"));
         tenants.put("tenant4", tenant(APP_DB, "public"));
-        MigrationException exception = assertThrows(MigrationException.class, () -> validator.validate(tenants));
-        assertTrue(exception.getMessage().contains("tenants.profile.tenant3"));
-        assertTrue(exception.getMessage().contains("tenants.profile.tenant4"));
+        properties.setPublicSchema("Shared-Schema");
+        assertDoesNotThrow(() -> validator.validate(tenants));
     }
 
     @Test
@@ -164,7 +155,10 @@ class MigrationStartupValidationTest {
     @Test
     void validatesTenantForRuntimeOnboarding() {
         assertTrue(validator.validateTenant("tenant1", tenants.get("tenant1")).isEmpty());
-        assertEquals(1, validator.validateTenant("bad", tenant(APP_DB, "BAD")).size());
+        List<String> errors = validator.validateTenant("bad", tenant(APP_DB + "?currentSchema=other", "bad_schema"));
+        assertEquals(1, errors.size());
+        assertTrue(errors.get(0).startsWith("tenants.profile.bad: "));
+        assertTrue(validator.validateTenant("no_schema", tenant(APP_DB + "?currentSchema=other", null)).isEmpty());
     }
 
     private void assertInvalid(String expectedMessagePart) {

@@ -50,7 +50,7 @@ import org.eclipse.ecsp.sql.dao.constants.PostgresDbConstants;
 @Setter
 public class AdminDataSourceProperties {
 
-    /** Default maximum pool size; migrations are sequential. */
+    /** Default maximum pool size; covers sequential migrations. Raised to {@code sqldao.liquibase.parallelism}. */
     public static final int DEFAULT_MAX_POOL_SIZE = 2;
 
     /** JDBC URL of the database this admin user migrates. */
@@ -71,6 +71,6 @@ public class AdminDataSourceProperties {
     /** Minimum idle connections; admin pools keep none by default. */
     private int minPoolSize;
 
-    /** Maximum pool size. */
+    /** Maximum pool size; the effective size is at least {@code sqldao.liquibase.parallelism}. */
     private int maxPoolSize = DEFAULT_MAX_POOL_SIZE;
 }

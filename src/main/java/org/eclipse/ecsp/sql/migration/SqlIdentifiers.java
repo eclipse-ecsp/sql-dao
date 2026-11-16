@@ -43,7 +43,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * SQL identifier helpers. Callers pass only names that passed schema-name validation.
+ * SQL identifier helpers. Identifiers are always quoted, with embedded quotes escaped, because schema names from
+ * configuration are not validated at startup.
  */
 final class SqlIdentifiers {
 
@@ -52,19 +53,19 @@ final class SqlIdentifiers {
     }
 
     /**
-     * Quotes a validated identifier.
+     * Quotes an identifier, doubling any embedded double quote so that it cannot end the identifier early.
      *
-     * @param identifier a validated lower-case identifier
+     * @param identifier the identifier
      * @return the quoted identifier
      */
     static String quote(String identifier) {
-        return "\"" + identifier + "\"";
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
     }
 
     /**
-     * Builds {@code SET search_path TO "a", "b"} for validated schema names.
+     * Builds {@code SET search_path TO "a", "b"}.
      *
-     * @param schemas validated schema names, in search order
+     * @param schemas the schema names, in search order
      * @return the {@code SET search_path} statement
      */
     static String setSearchPath(List<String> schemas) {

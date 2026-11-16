@@ -50,9 +50,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -66,6 +64,8 @@ class MigrationDataSourceResolverTest {
 
     private static final String DB_A = "jdbc:postgresql://db-a-host:5432/orders_db";
     private static final String DB_B = "jdbc:postgresql://db-b-host:5432/billing_db";
+    private static final int PARALLELISM = 8;
+    private static final int LARGE_POOL = 16;
 
     private SqlDaoLiquibaseProperties properties;
     private RecordingResolver resolver;
@@ -75,30 +75,23 @@ class MigrationDataSourceResolverTest {
         properties = new SqlDaoLiquibaseProperties();
         properties.getAdmin().put("ordersdb", admin("jdbc:postgresql://DB-A-HOST/orders_db?sslmode=require"));
         properties.getAdmin().put("billingdb", admin(DB_B));
-        properties.getAdmin().put("explicit", admin("jdbc:postgresql://pgbouncer:6432/orders_db"));
         resolver = new RecordingResolver(properties);
     }
 
     @Test
-    void explicitAliasBeatsUrlMatch() {
-        TenantDatabaseProperties tenant = tenant(DB_A, "orders_eu", "explicit");
-        assertEquals(Optional.of("explicit"), resolver.resolveAdminAlias("eu_orders", tenant));
-    }
-
-    @Test
     void urlMatchIgnoresQueryParametersAndHostCase() {
-        assertEquals(Optional.of("ordersdb"), resolver.resolveAdminAlias("eu_orders", tenant(DB_A, "orders_eu", null)));
+        assertEquals(Optional.of("ordersdb"), resolver.resolveAdminAlias(tenant(DB_A, "orders_eu")));
     }
 
     @Test
     void tenantWithoutSchemaSkipsUrlMatch() {
-        assertEquals(Optional.empty(), resolver.resolveAdminAlias("t1", tenant(DB_A, null, null)));
+        assertEquals(Optional.empty(), resolver.resolveAdminAlias(tenant(DB_A, null)));
     }
 
     @Test
     void sessionFallsBackToTenantPool() {
         DataSource tenantPool = mock(DataSource.class);
-        TenantDatabaseProperties tenant = tenant("jdbc:postgresql://other/db", "tenant1", null);
+        TenantDatabaseProperties tenant = tenant("jdbc:postgresql://other/db", "tenant1");
         try (MigrationSession session = resolver.openSession()) {
             assertSame(tenantPool, session.resolve("t1", tenant, tenantPool));
         }
@@ -106,7 +99,7 @@ class MigrationDataSourceResolverTest {
 
     @Test
     void sessionFailsWhenTenantHasNoPool() {
-        TenantDatabaseProperties tenant = tenant("jdbc:postgresql://other/db", "tenant1", null);
+        TenantDatabaseProperties tenant = tenant("jdbc:postgresql://other/db", "tenant1");
         try (MigrationSession session = resolver.openSession()) {
             MigrationException exception = assertThrows(MigrationException.class,
                     () -> session.resolve("t1", tenant, null));
@@ -117,8 +110,8 @@ class MigrationDataSourceResolverTest {
     @Test
     void sessionReusesAdminPoolsAndClosesThemOnClose() {
         MigrationSession session = resolver.openSession();
-        DataSource first = session.resolve("eu_orders", tenant(DB_A, "orders_eu", null), null);
-        DataSource second = session.resolve("us_orders", tenant(DB_A, "orders_us", null), null);
+        DataSource first = session.resolve("eu_orders", tenant(DB_A, "orders_eu"), null);
+        DataSource second = session.resolve("us_orders", tenant(DB_A, "orders_us"), null);
         assertSame(first, second);
         assertEquals(1, resolver.created.size());
         session.close();
@@ -128,7 +121,7 @@ class MigrationDataSourceResolverTest {
     @Test
     void destroyClosesSessionsStillOpen() {
         MigrationSession session = resolver.openSession();
-        session.resolve("eu_orders", tenant(DB_A, "orders_eu", null), null);
+        session.resolve("eu_orders", tenant(DB_A, "orders_eu"), null);
         resolver.destroy();
         verify(resolver.created.get("ordersdb")).close();
     }
@@ -136,9 +129,9 @@ class MigrationDataSourceResolverTest {
     @Test
     void distinctDatabasesGroupsTenantsAndResolvesPhaseOneAlias() {
         Map<String, TenantDatabaseProperties> tenants = new HashMap<>();
-        tenants.put("us_orders", tenant(DB_A, "orders_us", null));
-        tenants.put("eu_orders", tenant(DB_A + "?ApplicationName=x", "orders_eu", null));
-        tenants.put("eu_billing", tenant(DB_B, "billing_eu", null));
+        tenants.put("us_orders", tenant(DB_A, "orders_us"));
+        tenants.put("eu_orders", tenant(DB_A + "?ApplicationName=x", "orders_eu"));
+        tenants.put("eu_billing", tenant(DB_B, "billing_eu"));
         List<DatabaseTarget> targets = resolver.distinctDatabases(tenants);
         assertEquals(List.of("db-a-host:5432/orders_db", "db-b-host:5432/billing_db"),
                 targets.stream().map(DatabaseTarget::key).toList());
@@ -149,27 +142,28 @@ class MigrationDataSourceResolverTest {
     }
 
     @Test
-    void singleExplicitAliasWinsForPhaseOneAndConflictsResolveToNothing() {
-        Map<String, TenantDatabaseProperties> tenants = new HashMap<>();
-        tenants.put("eu_orders", tenant(DB_A, "orders_eu", "explicit"));
-        tenants.put("us_orders", tenant(DB_A, "orders_us", null));
-        assertEquals("explicit", resolver.distinctDatabases(tenants).get(0).adminAlias());
-
-        tenants.put("us_orders", tenant(DB_A, "orders_us", "ordersdb"));
-        DatabaseTarget conflicting = resolver.distinctDatabases(tenants).get(0);
-        assertNull(conflicting.adminAlias());
-        assertEquals(Set.of("explicit", "ordersdb"), conflicting.explicitAdminAliases());
-    }
-
-    @Test
     void phaseOneNeverFallsBackToTenantPool() {
         DatabaseTarget target = new DatabaseTarget("other:5432/db", "jdbc:postgresql://other/db", List.of("t1"),
-                Set.of(), null);
+                null);
         try (MigrationSession session = resolver.openSession()) {
             MigrationException exception = assertThrows(MigrationException.class,
                     () -> session.resolveForDatabase(target));
             assertEquals(MigrationErrorCode.INVALID_CONFIGURATION, exception.getErrorCode());
         }
+    }
+
+    @Test
+    void adminPoolIsAtLeastAsLargeAsTheMigrationParallelism() {
+        properties.getAdmin().put("appdb", admin("jdbc:postgresql://db-host:5432/appdb"));
+        MigrationDataSourceResolver realResolver = new MigrationDataSourceResolver(properties, null);
+        assertEquals(AdminDataSourceProperties.DEFAULT_MAX_POOL_SIZE,
+                realResolver.adminPoolConfig("appdb").getMaximumPoolSize());
+
+        properties.setParallelism(PARALLELISM);
+        assertEquals(PARALLELISM, realResolver.adminPoolConfig("appdb").getMaximumPoolSize());
+
+        properties.getAdmin().get("appdb").setMaxPoolSize(LARGE_POOL);
+        assertEquals(LARGE_POOL, realResolver.adminPoolConfig("appdb").getMaximumPoolSize());
     }
 
     @Test
@@ -205,11 +199,10 @@ class MigrationDataSourceResolverTest {
         return admin;
     }
 
-    private static TenantDatabaseProperties tenant(String jdbcUrl, String schema, String migrationAdmin) {
+    private static TenantDatabaseProperties tenant(String jdbcUrl, String schema) {
         TenantDatabaseProperties tenant = new TenantDatabaseProperties();
         tenant.setJdbcUrl(jdbcUrl);
         tenant.setSchema(schema);
-        tenant.setMigrationAdmin(migrationAdmin);
         return tenant;
     }
 

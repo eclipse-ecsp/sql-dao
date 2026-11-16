@@ -69,7 +69,6 @@ public class MigrationConfigurationValidator {
 
     private final SqlDaoLiquibaseProperties properties;
     private final MigrationDataSourceResolver resolver;
-    private final SchemaProvisioningService provisioningService;
     private final Environment environment;
 
     /**
@@ -77,14 +76,12 @@ public class MigrationConfigurationValidator {
      *
      * @param properties the Liquibase migration properties
      * @param resolver the migration datasource resolver
-     * @param provisioningService the schema-name validator
      * @param environment the Spring environment
      */
     public MigrationConfigurationValidator(SqlDaoLiquibaseProperties properties, MigrationDataSourceResolver resolver,
-            SchemaProvisioningService provisioningService, Environment environment) {
+            Environment environment) {
         this.properties = properties;
         this.resolver = resolver;
-        this.provisioningService = provisioningService;
         this.environment = environment;
     }
 
@@ -115,20 +112,10 @@ public class MigrationConfigurationValidator {
     public List<String> validateTenant(String tenantId, TenantDatabaseProperties tenant) {
         List<String> errors = new ArrayList<>();
         String prefix = "tenants.profile." + tenantId + ": ";
-        String schema = tenant.getSchema();
-        if (schema != null) {
-            addIfInvalid(errors, prefix, () -> this.provisioningService.validateSchemaName(schema));
-            if (tenant.getJdbcUrl() != null && CURRENT_SCHEMA_PARAMETER.matcher(tenant.getJdbcUrl()).find()) {
-                errors.add(prefix + "jdbc-url must not carry currentSchema when schema is set, because PgJDBC lets URL "
-                        + "parameters override the search path that sql-dao sets");
-            }
-        }
-        String alias = StringUtils.trimToNull(tenant.getMigrationAdmin());
-        if (alias != null && schema == null) {
-            errors.add(prefix + "migration-admin requires a schema; a tenant without schema migrates on its own pool");
-        }
-        if (alias != null && !this.properties.getAdmin().containsKey(alias)) {
-            errors.add(prefix + "migration-admin '" + alias + "' is not defined under sqldao.liquibase.admin");
+        if (tenant.getSchema() != null && tenant.getJdbcUrl() != null
+                && CURRENT_SCHEMA_PARAMETER.matcher(tenant.getJdbcUrl()).find()) {
+            errors.add(prefix + "jdbc-url must not carry currentSchema when schema is set, because PgJDBC lets URL "
+                    + "parameters override the search path that sql-dao sets");
         }
         return errors;
     }
@@ -168,8 +155,17 @@ public class MigrationConfigurationValidator {
             errors.add(MigrationConstants.DEFER_DATASOURCE_INITIALIZATION + "=true is not supported: it makes "
                     + "Hibernate initialize before the Liquibase migrations");
         }
-        addIfInvalid(errors, "sqldao.liquibase.public-schema: ",
-                () -> this.provisioningService.validateSharedSchemaName(this.properties.getPublicSchema()));
+        if (this.properties.getParallelism() < 1) {
+            errors.add("sqldao.liquibase.parallelism must be at least 1 but is " + this.properties.getParallelism());
+        }
+        if (this.properties.getRetry().getMaxAttempts() < 1) {
+            errors.add("sqldao.liquibase.retry.max-attempts must be at least 1 but is "
+                    + this.properties.getRetry().getMaxAttempts());
+        }
+        if (this.properties.getRetry().getDelayMs() < 0) {
+            errors.add("sqldao.liquibase.retry.delay-ms must not be negative but is "
+                    + this.properties.getRetry().getDelayMs());
+        }
         errors.addAll(validateAdminAliases());
         return errors;
     }
@@ -197,22 +193,11 @@ public class MigrationConfigurationValidator {
             return errors;
         }
         for (DatabaseTarget target : this.resolver.distinctDatabases(tenants)) {
-            if (target.explicitAdminAliases().size() > 1) {
-                errors.add("Tenants " + target.tenantIds() + " of database " + target.key()
-                        + " name different migration-admin aliases " + target.explicitAdminAliases());
-            } else if (target.adminAlias() == null) {
+            if (target.adminAlias() == null) {
                 errors.add("sqldao.liquibase.public-change-log is set, but no admin alias resolves for database "
                         + target.key() + " (tenants " + target.tenantIds() + "); Phase 1 never runs on a tenant pool");
             }
         }
         return errors;
-    }
-
-    private static void addIfInvalid(List<String> errors, String prefix, Runnable check) {
-        try {
-            check.run();
-        } catch (MigrationException e) {
-            errors.add(prefix + e.getMessage());
-        }
     }
 }

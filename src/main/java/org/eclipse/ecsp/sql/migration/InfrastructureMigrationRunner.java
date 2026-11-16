@@ -62,6 +62,7 @@ public class InfrastructureMigrationRunner {
     private final MigrationDataSourceResolver resolver;
     private final SchemaMigrationLock schemaLock;
     private final LiquibaseMigrationService liquibaseService;
+    private final MigrationRetryExecutor retryExecutor;
 
     /**
      * Creates the runner.
@@ -70,13 +71,16 @@ public class InfrastructureMigrationRunner {
      * @param resolver the migration datasource resolver
      * @param schemaLock the per-schema advisory lock
      * @param liquibaseService the Liquibase command runner
+     * @param retryExecutor retries an attempt that failed
      */
     public InfrastructureMigrationRunner(SqlDaoLiquibaseProperties properties, MigrationDataSourceResolver resolver,
-            SchemaMigrationLock schemaLock, LiquibaseMigrationService liquibaseService) {
+            SchemaMigrationLock schemaLock, LiquibaseMigrationService liquibaseService,
+            MigrationRetryExecutor retryExecutor) {
         this.properties = properties;
         this.resolver = resolver;
         this.schemaLock = schemaLock;
         this.liquibaseService = liquibaseService;
+        this.retryExecutor = retryExecutor;
     }
 
     /**
@@ -113,10 +117,13 @@ public class InfrastructureMigrationRunner {
     public boolean migrateDatabase(DatabaseTarget target, MigrationSession session) {
         String publicSchema = this.properties.getPublicSchema();
         try {
-            DataSource adminPool = session.resolveForDatabase(target);
-            this.schemaLock.withLockedConnection(adminPool, null, publicSchema, this.properties.getLockTimeoutSeconds(),
-                    connection -> this.liquibaseService.runPublicMigrations(connection, publicSchema,
-                            this.properties.getPublicChangeLog()));
+            this.retryExecutor.run("shared schema of database " + target.key(), () -> {
+                DataSource adminPool = session.resolveForDatabase(target);
+                this.schemaLock.withLockedConnection(adminPool, null, publicSchema,
+                        this.properties.getLockTimeoutSeconds(),
+                        connection -> this.liquibaseService.runPublicMigrations(connection, publicSchema,
+                                this.properties.getPublicChangeLog()));
+            });
             LOGGER.info("Phase 1 completed for database {}", target.key());
             return true;
         } catch (MigrationException e) {

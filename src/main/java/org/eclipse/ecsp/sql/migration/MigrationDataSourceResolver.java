@@ -55,15 +55,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Resolves the connection that migrates each tenant and each database.
  *
- * <p>Precedence for a tenant: explicit {@code migration-admin}, then an admin alias whose normalized JDBC URL
- * matches (only for tenants that declare a schema), then the tenant's own pool. Phase 1 always runs on an admin
- * pool. Admin pools are short-lived and owned by a {@link MigrationSession}; tenant pools are never closed here.
+ * <p>For a tenant, an admin alias whose normalized JDBC URL matches is used only when the tenant declares a schema;
+ * otherwise migration uses the tenant's own pool. Phase 1 always runs on a URL-matched admin pool. Admin pools are
+ * short-lived and owned by a {@link MigrationSession}; tenant pools are never closed here.
  */
 @Component
 @ConditionalOnLiquibaseEnabled
@@ -101,14 +100,10 @@ public class MigrationDataSourceResolver implements DisposableBean {
     /**
      * Resolves the admin alias for a tenant's Phase 2 and 3 migration, if any applies.
      *
-     * @param tenantId the tenant identifier
      * @param tenantProperties the tenant properties
-     * @return the explicit or URL-matched admin alias, or empty to use the tenant pool
+     * @return the URL-matched admin alias, or empty to use the tenant pool
      */
-    public Optional<String> resolveAdminAlias(String tenantId, TenantDatabaseProperties tenantProperties) {
-        if (StringUtils.isNotBlank(tenantProperties.getMigrationAdmin())) {
-            return Optional.of(tenantProperties.getMigrationAdmin().trim());
-        }
+    public Optional<String> resolveAdminAlias(TenantDatabaseProperties tenantProperties) {
         if (tenantProperties.getSchema() == null) {
             return Optional.empty();
         }
@@ -131,8 +126,7 @@ public class MigrationDataSourceResolver implements DisposableBean {
     }
 
     /**
-     * Groups tenants by normalized JDBC URL and resolves the Phase 1 admin alias of each database: the single
-     * explicit {@code migration-admin} named by its tenants, otherwise the URL-matched alias.
+     * Groups tenants by normalized JDBC URL and resolves the Phase 1 admin alias by matching the database URL.
      *
      * @param tenants the tenants by identifier
      * @return the distinct databases, sorted by key
@@ -160,22 +154,9 @@ public class MigrationDataSourceResolver implements DisposableBean {
 
     private DatabaseTarget toTarget(String key, List<Map.Entry<String, TenantDatabaseProperties>> entries) {
         List<String> tenantIds = entries.stream().map(Map.Entry::getKey).toList();
-        Set<String> explicitAliases = new TreeSet<>();
-        entries.stream()
-                .map(entry -> entry.getValue().getMigrationAdmin())
-                .filter(StringUtils::isNotBlank)
-                .map(String::trim)
-                .forEach(explicitAliases::add);
         String jdbcUrl = entries.get(0).getValue().getJdbcUrl();
-        String adminAlias;
-        if (explicitAliases.size() == 1) {
-            adminAlias = explicitAliases.iterator().next();
-        } else if (explicitAliases.isEmpty()) {
-            adminAlias = findAliasByUrl(jdbcUrl).orElse(null);
-        } else {
-            adminAlias = null;
-        }
-        return new DatabaseTarget(key, jdbcUrl, tenantIds, Set.copyOf(explicitAliases), adminAlias);
+        String adminAlias = findAliasByUrl(jdbcUrl).orElse(null);
+        return new DatabaseTarget(key, jdbcUrl, tenantIds, adminAlias);
     }
 
     /**
@@ -186,6 +167,19 @@ public class MigrationDataSourceResolver implements DisposableBean {
      * @return a new admin pool
      */
     HikariDataSource createAdminPool(String alias) {
+        HikariConfig config = adminPoolConfig(alias);
+        try {
+            HikariDataSource pool = new HikariDataSource(config);
+            LOGGER.info("Created migration admin pool for alias {} (max {} connections)", alias,
+                    config.getMaximumPoolSize());
+            return pool;
+        } catch (RuntimeException e) {
+            throw new MigrationException("Failed to create the migration admin pool for alias '" + alias + "'",
+                    null, MigrationErrorCode.MIGRATION_FAILED, e);
+        }
+    }
+
+    HikariConfig adminPoolConfig(String alias) {
         AdminDataSourceProperties admin = this.properties.getAdmin().get(alias);
         if (admin == null) {
             throw new MigrationException("Unknown admin alias '" + alias + "' (sqldao.liquibase.admin." + alias
@@ -195,17 +189,12 @@ public class MigrationDataSourceResolver implements DisposableBean {
         config.setJdbcUrl(admin.getJdbcUrl());
         config.setDriverClassName(admin.getDriverClassName());
         config.setMinimumIdle(admin.getMinPoolSize());
-        config.setMaximumPoolSize(admin.getMaxPoolSize());
+        // Every parallel migration holds one admin connection for its whole run; a smaller pool would make
+        // workers queue and fail with a connection timeout.
+        config.setMaximumPoolSize(Math.max(admin.getMaxPoolSize(), this.properties.getParallelism()));
         config.setPoolName(ADMIN_POOL_PREFIX + alias);
         applyCredentials(config, alias, admin);
-        try {
-            HikariDataSource pool = new HikariDataSource(config);
-            LOGGER.info("Created migration admin pool for alias {}", alias);
-            return pool;
-        } catch (RuntimeException e) {
-            throw new MigrationException("Failed to create the migration admin pool for alias '" + alias + "'",
-                    null, MigrationErrorCode.MIGRATION_FAILED, e);
-        }
+        return config;
     }
 
     private void applyCredentials(HikariConfig config, String alias, AdminDataSourceProperties admin) {

@@ -40,7 +40,6 @@
 package org.eclipse.ecsp.sql.migration;
 
 import java.util.List;
-import java.util.Set;
 
 /**
  * A distinct database that Phase 1 migrates once, with the tenants that live in it.
@@ -48,9 +47,8 @@ import java.util.Set;
  * @param key normalized JDBC URL ({@code host:port/database})
  * @param jdbcUrl JDBC URL of one of its tenants
  * @param tenantIds tenants in this database, sorted
- * @param explicitAdminAliases distinct {@code migration-admin} aliases named by its tenants
  * @param adminAlias admin alias resolved for Phase 1, or {@code null} when none resolves
  */
 public record DatabaseTarget(String key, String jdbcUrl, List<String> tenantIds,
-                             Set<String> explicitAdminAliases, String adminAlias) {
+                             String adminAlias) {
 }

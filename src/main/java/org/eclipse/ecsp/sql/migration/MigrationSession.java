@@ -75,7 +75,7 @@ public class MigrationSession implements AutoCloseable {
      * @throws MigrationException with {@link MigrationErrorCode#MIGRATION_FAILED} if no datasource applies
      */
     public DataSource resolve(String tenantId, TenantDatabaseProperties tenantProperties, DataSource tenantPool) {
-        return this.resolver.resolveAdminAlias(tenantId, tenantProperties)
+        return this.resolver.resolveAdminAlias(tenantProperties)
                 .<DataSource>map(this::adminPool)
                 .orElseGet(() -> requireTenantPool(tenantId, tenantPool));
     }

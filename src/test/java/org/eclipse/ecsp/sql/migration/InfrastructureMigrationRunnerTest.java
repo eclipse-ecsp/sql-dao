@@ -44,6 +44,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -70,6 +71,7 @@ class InfrastructureMigrationRunnerTest {
     private static final String PUBLIC_CHANGELOG = "db/changelog/db.changelog-public.xml";
     private static final int WORK_ARGUMENT = 4;
     private static final int DATABASE_COUNT = 2;
+    private static final int ATTEMPTS_AFTER_ONE_RETRY = 2;
 
     private SqlDaoLiquibaseProperties properties;
     private MigrationDataSourceResolver resolver;
@@ -85,16 +87,18 @@ class InfrastructureMigrationRunnerTest {
     void setUp() {
         properties = new SqlDaoLiquibaseProperties();
         properties.setPublicChangeLog(PUBLIC_CHANGELOG);
+        properties.getRetry().setDelayMs(0);
         resolver = mock(MigrationDataSourceResolver.class);
         session = mock(MigrationSession.class);
         schemaLock = mock(SchemaMigrationLock.class);
         liquibaseService = mock(LiquibaseMigrationService.class);
         connection = mock(Connection.class);
-        runner = new InfrastructureMigrationRunner(properties, resolver, schemaLock, liquibaseService);
+        runner = new InfrastructureMigrationRunner(properties, resolver, schemaLock, liquibaseService,
+                new MigrationRetryExecutor(properties));
         orders = new DatabaseTarget("db-a:5432/orders_db", "jdbc:postgresql://db-a/orders_db",
-                List.of("eu_orders", "us_orders"), Set.of(), "ordersdb");
+                List.of("eu_orders", "us_orders"), "ordersdb");
         billing = new DatabaseTarget("db-b:5432/billing_db", "jdbc:postgresql://db-b/billing_db",
-                List.of("eu_billing", "us_billing"), Set.of(), "billingdb");
+                List.of("eu_billing", "us_billing"), "billingdb");
         when(resolver.distinctDatabases(anyMap())).thenReturn(List.of(orders, billing));
         when(session.resolveForDatabase(any())).thenReturn(mock(DataSource.class));
         doAnswer(invocation -> {
@@ -134,5 +138,26 @@ class InfrastructureMigrationRunnerTest {
                 .thenThrow(new MigrationException("x", null, MigrationErrorCode.INVALID_CONFIGURATION));
         assertThrows(MigrationException.class, () -> runner.runInfrastructureMigrations(Map.of(), session));
         verify(session, never()).resolveForDatabase(billing);
+    }
+
+    @Test
+    void retriesFailureOfOneDatabase() {
+        when(session.resolveForDatabase(orders)).thenThrow(failure()).thenReturn(mock(DataSource.class));
+        assertTrue(runner.runInfrastructureMigrations(Map.of(), session).isEmpty());
+        verify(session, times(ATTEMPTS_AFTER_ONE_RETRY)).resolveForDatabase(orders);
+        verify(liquibaseService, times(DATABASE_COUNT)).runPublicMigrations(connection, "public", PUBLIC_CHANGELOG);
+    }
+
+    @Test
+    void reportsDatabaseWhoseFailureOutlastsTheRetries() {
+        properties.setFailOnError(false);
+        when(session.resolveForDatabase(billing)).thenThrow(failure());
+        assertEquals(Set.of(billing.key()), runner.runInfrastructureMigrations(Map.of(), session));
+        verify(session, times(MigrationRetryProperties.DEFAULT_MAX_ATTEMPTS)).resolveForDatabase(billing);
+    }
+
+    private static MigrationException failure() {
+        return new MigrationException("connection lost", null, MigrationErrorCode.MIGRATION_FAILED,
+                new SQLException("connection failure", "08006"));
     }
 }
