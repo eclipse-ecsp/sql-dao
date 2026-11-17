@@ -42,7 +42,6 @@ package org.eclipse.ecsp.sql.migration;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.MigrationSession;
-import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
 import org.eclipse.ecsp.sql.migration.SqlDaoLiquibaseProperties.AdminDataSourceProperties;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.junit.jupiter.api.BeforeAll;
@@ -75,7 +74,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -167,7 +165,6 @@ class LiquibaseMigrationFlowIntegrationTest {
     @Test
     void tenantChangelogFailsWithoutPhaseOneAndSucceedsOnceItHasRun() throws SQLException {
         try (Harness harness = new Harness(TENANT_CHANGELOG).withAdmin("noinfradb", NOINFRA_DB)) {
-            harness.properties.setFailOnError(false);
             harness.properties.getRetry().setMaxAttempts(1);
             Map<String, TenantDatabaseProperties> tenants = Map.of("late", tenant(NOINFRA_DB, "flow_late"));
 
@@ -216,7 +213,6 @@ class LiquibaseMigrationFlowIntegrationTest {
     @Test
     void evictsTheMigrationConnectionAfterFailureToo() throws SQLException {
         try (Harness harness = new Harness(FAILING_CHANGELOG)) {
-            harness.properties.setFailOnError(false);
             harness.properties.getRetry().setMaxAttempts(1);
             HikariDataSource pool = harness.tenantPool("broken", ORDERS_DB);
             ConnectionState before = connectionState(pool);
@@ -293,7 +289,6 @@ class LiquibaseMigrationFlowIntegrationTest {
         try (Harness harness = new Harness(EXTRA_CHANGELOG).withAdmin("ordersdb", ORDERS_DB)) {
             harness.properties.setReleaseStaleLocks(false);
             harness.properties.setChangelogLockWaitMinutes(0);
-            harness.properties.setFailOnError(false);
             harness.properties.getRetry().setMaxAttempts(1);
 
             Map<String, TenantDatabaseProperties> tenants = Map.of("stale", tenant(ORDERS_DB, "flow_stale_off"));
@@ -328,7 +323,6 @@ class LiquibaseMigrationFlowIntegrationTest {
     void invalidSchemaNameFailsOnlyItsTenantAndNeverReachesSql() throws SQLException {
         String evil = "evil\"; DROP SCHEMA flow_good CASCADE; --";
         try (Harness harness = new Harness(TENANT_CHANGELOG).withPublicChangeLog().withAdmin("ordersdb", ORDERS_DB)) {
-            harness.properties.setFailOnError(false);
             harness.properties.getRetry().setMaxAttempts(1);
             Map<String, TenantDatabaseProperties> tenants = new TreeMap<>();
             tenants.put("a_good", tenant(ORDERS_DB, "flow_good"));
@@ -357,15 +351,14 @@ class LiquibaseMigrationFlowIntegrationTest {
     }
 
     @Test
-    void failOnErrorStopsStartupWithTheFailingTenant() {
+    void failedTenantIsReportedAndNeverThrown() throws SQLException {
         Map<String, TenantDatabaseProperties> tenants = Map.of("fatal", tenant(ORDERS_DB, "flow_fatal"));
         try (Harness harness = new Harness(FAILING_CHANGELOG).withAdmin("ordersdb", ORDERS_DB)) {
             harness.properties.getRetry().setMaxAttempts(1);
-            MigrationException exception = assertThrows(MigrationException.class,
-                    () -> harness.migrateTenantsOnly(tenants));
-            assertEquals("fatal", exception.getTenantId());
-            assertEquals(MigrationErrorCode.MIGRATION_FAILED, exception.getErrorCode());
+
+            assertEquals(Set.of("fatal"), harness.migrateTenantsOnly(tenants));
         }
+        assertEquals(1, count(ORDERS_DB, "flow_fatal.databasechangelog"), "the changeset before the broken one stays");
     }
 
     private static TenantDatabaseProperties tenant(String database, String schema) {

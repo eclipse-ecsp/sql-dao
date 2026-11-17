@@ -90,8 +90,7 @@ public class InfrastructureMigrationRunner {
      *
      * @param tenants the tenants by identifier
      * @param session the migration session that owns the admin pools
-     * @return keys of databases whose Phase 1 failed (only with {@code fail-on-error=false})
-     * @throws MigrationException on the first failure when {@code fail-on-error=true}
+     * @return keys of databases whose Phase 1 failed; their tenants are not migrated
      */
     public Set<String> runInfrastructureMigrations(Map<String, TenantDatabaseProperties> tenants,
             MigrationSession session) {
@@ -113,8 +112,7 @@ public class InfrastructureMigrationRunner {
      *
      * @param target the database
      * @param session the migration session that owns the admin pools
-     * @return {@code true} on success, {@code false} on failure with {@code fail-on-error=false}
-     * @throws MigrationException on failure when {@code fail-on-error=true}
+     * @return {@code true} on success, {@code false} on failure, which is logged and not thrown
      */
     public boolean migrateDatabase(DatabaseTarget target, MigrationSession session) {
         String publicSchema = this.properties.getPublicSchema();
@@ -128,10 +126,7 @@ public class InfrastructureMigrationRunner {
             });
             LOGGER.info("Phase 1 completed for database {}", target.key());
             return true;
-        } catch (MigrationException e) {
-            if (this.properties.isFailOnError()) {
-                throw e;
-            }
+        } catch (RuntimeException e) {
             LOGGER.error("Phase 1 failed for database {}; tenants {} will not be migrated: {}", target.key(),
                     target.tenantIds(), e.getMessage(), e);
             return false;

@@ -62,7 +62,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -135,15 +134,6 @@ public class TenantMigrationRunner {
     }
 
     /**
-     * Whether a migration failure must abort startup or a runtime onboarding.
-     *
-     * @return the {@code fail-on-error} setting
-     */
-    public boolean isFailOnError() {
-        return this.properties.isFailOnError();
-    }
-
-    /**
      * Validates one tenant's migration configuration.
      *
      * @param tenantId the tenant identifier
@@ -158,14 +148,13 @@ public class TenantMigrationRunner {
      * Migrates every tenant, in tenant-ID order when sequential. Tenants whose database failed Phase 1 are skipped,
      * and tenants that declare the same schema in the same database are migrated once. With
      * {@code sqldao.liquibase.parallelism} above one, up to that many tenants are migrated at the same time, and
-     * this method returns only after every started migration has finished.
+     * this method returns only after every started migration has finished. A failed tenant is logged and the rest
+     * are still migrated; the method does not throw for migration failures.
      *
      * @param tenants the tenants by identifier
      * @param skipDatabases keys of databases whose Phase 1 failed
      * @param session the migration session that owns the admin pools
-     * @return identifiers of tenants that failed or were skipped (only with {@code fail-on-error=false})
-     * @throws MigrationException on the first failure when {@code fail-on-error=true}; tenants that have not started
-     *         by then are not migrated, and failures of migrations already running are added as suppressed
+     * @return identifiers of tenants that failed or were skipped
      */
     public Set<String> migrateAllTenants(Map<String, TenantDatabaseProperties> tenants, Set<String> skipDatabases,
             MigrationSession session) {
@@ -265,7 +254,6 @@ public class TenantMigrationRunner {
             MigrationSession session) {
         LOGGER.info("Migrating {} tenant(s) with {} parallel workers", tenants.size(), workers);
         Set<String> failedTenants = ConcurrentHashMap.newKeySet();
-        AtomicBoolean aborted = new AtomicBoolean();
         AtomicInteger threadNumber = new AtomicInteger();
         ExecutorService executor = Executors.newFixedThreadPool(workers, runnable -> {
             Thread thread = new Thread(runnable, WORKER_THREAD_PREFIX + threadNumber.incrementAndGet());
@@ -275,19 +263,11 @@ public class TenantMigrationRunner {
         try {
             List<Future<?>> futures = new ArrayList<>();
             tenants.forEach((tenantId, tenant) -> futures.add(executor.submit(() -> {
-                if (aborted.get()) {
-                    return;
-                }
-                try {
-                    if (!migrateUnderTenantLock(tenantId, tenant, session)) {
-                        failedTenants.add(tenantId);
-                    }
-                } catch (RuntimeException e) {
-                    aborted.set(true);
-                    throw e;
+                if (!migrateUnderTenantLock(tenantId, tenant, session)) {
+                    failedTenants.add(tenantId);
                 }
             })));
-            awaitAll(futures, aborted, executor);
+            awaitAll(futures, executor);
         } finally {
             executor.shutdown();
         }
@@ -296,33 +276,21 @@ public class TenantMigrationRunner {
 
     /**
      * Waits for every submitted migration, so that no worker still uses the session's pools when the caller closes
-     * it. The first failure is rethrown afterwards with the others attached as suppressed.
+     * it. When the waiting thread is interrupted, pending tenants are dropped and running workers are interrupted.
      */
-    private static void awaitAll(List<Future<?>> futures, AtomicBoolean aborted, ExecutorService executor) {
-        RuntimeException failure = null;
+    private static void awaitAll(List<Future<?>> futures, ExecutorService executor) {
         for (Future<?> future : futures) {
             try {
                 future.get();
             } catch (ExecutionException e) {
-                RuntimeException current = e.getCause() instanceof RuntimeException runtimeException
-                        ? runtimeException
-                        : new MigrationException("Tenant migration failed: " + e.getCause(), null,
-                                MigrationErrorCode.MIGRATION_FAILED, e.getCause());
-                if (failure == null) {
-                    failure = current;
-                } else {
-                    failure.addSuppressed(current);
-                }
+                LOGGER.error("A tenant migration worker failed unexpectedly: {}", e.getCause().getMessage(),
+                        e.getCause());
             } catch (InterruptedException e) {
-                aborted.set(true);
                 executor.shutdownNow();
                 Thread.currentThread().interrupt();
-                throw new MigrationException("Interrupted while migrating tenants", null,
-                        MigrationErrorCode.MIGRATION_FAILED, e);
+                LOGGER.warn("Interrupted while migrating tenants; the remaining tenants are not migrated");
+                return;
             }
-        }
-        if (failure != null) {
-            throw failure;
         }
     }
 
@@ -333,10 +301,7 @@ public class TenantMigrationRunner {
         try {
             migrateSchema(tenantId, tenant, this.targetDataSources.get(tenantId), session);
             return true;
-        } catch (MigrationException e) {
-            if (this.properties.isFailOnError()) {
-                throw e;
-            }
+        } catch (RuntimeException e) {
             LOGGER.error("Migration of tenant {} failed: {}", tenantId, e.getMessage(), e);
             return false;
         } finally {

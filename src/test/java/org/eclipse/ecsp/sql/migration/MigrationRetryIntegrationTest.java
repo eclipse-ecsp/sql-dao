@@ -56,7 +56,6 @@ import java.util.Map;
 import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -97,15 +96,16 @@ class MigrationRetryIntegrationTest {
     }
 
     @Test
-    void failsWhenRetriesAreDisabled() {
+    void reportsFailureWhenRetriesAreDisabled() {
         SqlDaoLiquibaseProperties properties = properties();
         properties.getRetry().setMaxAttempts(1);
         MigrationDataSourceResolver resolver = new MigrationDataSourceResolver(properties, null);
         TenantDatabaseProperties tenant = tenant();
         tenant.setSchema("no_retry_tenant");
         try (MigrationSession session = resolver.openSession()) {
-            assertThrows(MigrationException.class,
-                    () -> runner(properties, resolver).migrateAllTenants(Map.of("tenant2", tenant), Set.of(), session));
+            Set<String> failed =
+                    runner(properties, resolver).migrateAllTenants(Map.of("tenant2", tenant), Set.of(), session);
+            assertEquals(Set.of("tenant2"), failed);
         }
     }
 

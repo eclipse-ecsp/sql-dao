@@ -73,7 +73,6 @@ class SqlDaoLiquibasePropertiesTest {
         assertEquals("public", properties.getPublicSchema());
         assertTrue(properties.isRunOnStartup());
         assertEquals(StartupMode.BLOCKING, properties.getStartupMode());
-        assertTrue(properties.isFailOnError());
         assertEquals(SqlDaoLiquibaseProperties.DEFAULT_LOCK_TIMEOUT_SECONDS, properties.getLockTimeoutSeconds());
         assertEquals(1, properties.getParallelism());
         assertTrue(properties.isReleaseStaleLocks());

@@ -57,7 +57,7 @@ import java.util.TreeMap;
 import java.util.regex.Pattern;
 
 /**
- * Configuration checks that always fail startup, whatever {@code fail-on-error} and {@code startup-mode} are.
+ * Configuration checks that always fail startup, whatever the {@code startup-mode} is.
  */
 @Component
 @ConditionalOnLiquibaseEnabled

@@ -84,9 +84,6 @@ public class SqlDaoLiquibaseProperties {
     /** When startup migrations run. */
     private StartupMode startupMode = StartupMode.BLOCKING;
 
-    /** Whether a migration failure aborts startup or a runtime onboarding. */
-    private boolean failOnError = true;
-
     /** How long to wait for a schema's advisory lock, in seconds. */
     private int lockTimeoutSeconds = DEFAULT_LOCK_TIMEOUT_SECONDS;
 

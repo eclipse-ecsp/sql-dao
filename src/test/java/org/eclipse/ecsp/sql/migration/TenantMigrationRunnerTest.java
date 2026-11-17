@@ -56,7 +56,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -175,17 +174,7 @@ class TenantMigrationRunnerTest {
     }
 
     @Test
-    void failOnErrorStopsAtFirstFailure() {
-        doThrow(new MigrationException("x", "t1", MigrationErrorCode.MIGRATION_FAILED))
-                .when(liquibaseService).runMigrations(any(), eq("t1"), any(), anyString());
-        assertThrows(MigrationException.class, () -> runner.migrateAllTenants(
-                Map.of("t1", tenant(DB_A, "tenant1"), "t2", tenant(DB_A, "tenant2")), Set.of(), session));
-        assertFalse(migrated.contains("t2"));
-    }
-
-    @Test
-    void withoutFailOnErrorRemainingTenantsAreMigrated() {
-        properties.setFailOnError(false);
+    void remainingTenantsAreMigratedAfterFailure() {
         doThrow(new MigrationException("x", "t1", MigrationErrorCode.MIGRATION_FAILED))
                 .when(liquibaseService).runMigrations(any(), eq("t1"), any(), anyString());
         Set<String> failed = runner.migrateAllTenants(
@@ -237,9 +226,8 @@ class TenantMigrationRunnerTest {
     }
 
     @Test
-    void parallelRunWithoutFailOnErrorMigratesTheRestAndReportsFailures() {
+    void parallelRunMigratesTheRestAndReportsFailures() {
         properties.setParallelism(PARALLEL_TENANTS);
-        properties.setFailOnError(false);
         doThrow(new MigrationException("x", "t2", MigrationErrorCode.MIGRATION_FAILED))
                 .when(liquibaseService).runMigrations(any(), eq("t2"), any(), anyString());
         Set<String> failed = runner.migrateAllTenants(tenants(MANY_TENANTS), Set.of(), session);
@@ -249,41 +237,26 @@ class TenantMigrationRunnerTest {
     }
 
     @Test
-    void parallelFailOnErrorStopsNewTenantsButLetsRunningOnesFinish() {
-        properties.setParallelism(TWO_WORKERS);
-        CountDownLatch t2Started = new CountDownLatch(1);
-        CountDownLatch t1Failed = new CountDownLatch(1);
-        doAnswer(invocation -> {
-            t2Started.await(AWAIT_SECONDS, TimeUnit.SECONDS);
-            t1Failed.countDown();
-            throw new MigrationException("x", "t1", MigrationErrorCode.MIGRATION_FAILED);
-        }).when(liquibaseService).runMigrations(any(), eq("t1"), any(), anyString());
-        doAnswer(invocation -> {
-            t2Started.countDown();
-            t1Failed.await(AWAIT_SECONDS, TimeUnit.SECONDS);
-            // t1's worker must have flagged the abort before this worker looks for its next tenant
-            Thread.sleep(SLOW_MIGRATION_MILLIS);
-            return migrated.add(invocation.getArgument(1));
-        }).when(liquibaseService).runMigrations(any(), eq("t2"), any(), anyString());
-        MigrationException exception = assertThrows(MigrationException.class,
-                () -> runner.migrateAllTenants(tenants(MANY_TENANTS), Set.of(), session));
-        assertEquals("t1", exception.getTenantId());
-        assertEquals(List.of("t2"), migrated);
-        assertFalse(((ReentrantLock) runner.tenantLock("t1")).isLocked());
-    }
-
-    @Test
-    void parallelFailOnErrorReportsConcurrentFailuresAsSuppressed() {
+    void parallelRunReportsEveryConcurrentFailure() {
         properties.setParallelism(TWO_WORKERS);
         CyclicBarrier bothRunning = new CyclicBarrier(TWO_WORKERS);
         doAnswer(invocation -> {
             bothRunning.await(AWAIT_SECONDS, TimeUnit.SECONDS);
             throw new MigrationException("x", invocation.getArgument(1), MigrationErrorCode.MIGRATION_FAILED);
         }).when(liquibaseService).runMigrations(any(), anyString(), any(), anyString());
-        MigrationException exception = assertThrows(MigrationException.class,
-                () -> runner.migrateAllTenants(tenants(TWO_WORKERS), Set.of(), session));
-        assertEquals(1, exception.getSuppressed().length);
+        assertEquals(Set.of("t1", "t2"), runner.migrateAllTenants(tenants(TWO_WORKERS), Set.of(), session));
         assertTrue(migrated.isEmpty());
+        assertFalse(((ReentrantLock) runner.tenantLock("t1")).isLocked());
+    }
+
+    @Test
+    void unexpectedExceptionsAreLoggedAndTheRestIsMigrated() {
+        doThrow(new IllegalStateException("bug")).when(liquibaseService)
+                .runMigrations(any(), eq("t1"), any(), anyString());
+        Set<String> failed = runner.migrateAllTenants(
+                Map.of("t1", tenant(DB_A, "tenant1"), "t2", tenant(DB_A, "tenant2")), Set.of(), session);
+        assertEquals(Set.of("t1"), failed);
+        assertEquals(List.of("t2"), migrated);
     }
 
     @Test
@@ -306,10 +279,10 @@ class TenantMigrationRunnerTest {
     }
 
     @Test
-    void givesUpWhenFailureOutlastsTheAttempts() {
+    void givesUpWhenFailureOutlastsTheAttemptsAndReportsTheTenant() {
         doThrow(failure("t1")).when(liquibaseService).runMigrations(any(), eq("t1"), any(), anyString());
-        assertThrows(MigrationException.class,
-                () -> runner.migrateAllTenants(Map.of("t1", tenant(DB_A, "tenant1")), Set.of(), session));
+        assertEquals(Set.of("t1"),
+                runner.migrateAllTenants(Map.of("t1", tenant(DB_A, "tenant1")), Set.of(), session));
         verify(liquibaseService, times(MigrationRetryProperties.DEFAULT_MAX_ATTEMPTS))
                 .runMigrations(any(), eq("t1"), any(), anyString());
     }
@@ -319,15 +292,14 @@ class TenantMigrationRunnerTest {
         doThrow(new MigrationException("x", "t1", MigrationErrorCode.MIGRATION_FAILED,
                 new SQLException("syntax error", "42601")))
                 .when(liquibaseService).runMigrations(any(), eq("t1"), any(), anyString());
-        assertThrows(MigrationException.class,
-                () -> runner.migrateAllTenants(Map.of("t1", tenant(DB_A, "tenant1")), Set.of(), session));
+        assertEquals(Set.of("t1"),
+                runner.migrateAllTenants(Map.of("t1", tenant(DB_A, "tenant1")), Set.of(), session));
         verify(liquibaseService, times(MigrationRetryProperties.DEFAULT_MAX_ATTEMPTS))
                 .runMigrations(any(), eq("t1"), any(), anyString());
     }
 
     @Test
     void retryReleasesTheTenantLockAndKeepsOtherTenantsMigrating() {
-        properties.setFailOnError(false);
         doThrow(failure("t1")).when(liquibaseService).runMigrations(any(), eq("t1"), any(), anyString());
         Set<String> failed = runner.migrateAllTenants(
                 Map.of("t1", tenant(DB_A, "tenant1"), "t2", tenant(DB_A, "tenant2")), Set.of(), session);

@@ -135,8 +135,8 @@ public class TenantAwareDataSource {
      * Adds or updates a tenant-specific datasource at runtime.
      *
      * <p>With Liquibase enabled, the tenant is migrated on its new pool before its route is published, under the
-     * tenant's lock rather than the routing monitor. With {@code fail-on-error=true}, a failed migration closes the
-     * new pool, restores the previous credentials provider, keeps the previous route, and returns {@code false}.
+     * tenant's lock rather than the routing monitor. A failed migration is retried and then logged; the new pool is
+     * registered anyway, so the tenant is routable in an unmigrated state.
      * 
      * @param tenantId
      * @param tenantDatabaseProperties
@@ -330,13 +330,8 @@ public class TenantAwareDataSource {
             }
             testConnection(tenantId, newDataSource);
             boolean migrated = migrationRunner.migrateTenant(tenantId, tenantDatabaseProperties, newDataSource);
-            if (!migrated && migrationRunner.isFailOnError()) {
-                logger.warning("Migration failed for tenant " + tenantId + "; keeping its previous datasource");
-                return false;
-            }
             if (!migrated) {
-                logger.warning("Migration failed for tenant " + tenantId
-                        + "; registering it anyway because sqldao.liquibase.fail-on-error=false");
+                logger.warning("Migration failed for tenant " + tenantId + "; registering it anyway");
             }
             Optional<DataSource> previousDataSource = swapRoute(tenantId, tenantDatabaseProperties, newDataSource);
             registered = true;

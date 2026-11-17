@@ -53,7 +53,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -129,19 +128,25 @@ class InfrastructureMigrationRunnerTest {
     }
 
     @Test
-    void reportsFailedDatabaseWithoutFailOnError() {
-        properties.setFailOnError(false);
+    void reportsFailedDatabase() {
         when(session.resolveForDatabase(billing))
                 .thenThrow(new MigrationException("x", null, MigrationErrorCode.MIGRATION_FAILED));
         assertEquals(Set.of(billing.key()), runner.runInfrastructureMigrations(Map.of(), session));
     }
 
     @Test
-    void failOnErrorPropagatesPhaseOneFailure() {
+    void failedDatabaseDoesNotStopTheNextOne() {
         when(session.resolveForDatabase(orders))
                 .thenThrow(new MigrationException("x", null, MigrationErrorCode.INVALID_CONFIGURATION));
-        assertThrows(MigrationException.class, () -> runner.runInfrastructureMigrations(Map.of(), session));
-        verify(session, never()).resolveForDatabase(billing);
+        assertEquals(Set.of(orders.key()), runner.runInfrastructureMigrations(Map.of(), session));
+        verify(session).resolveForDatabase(billing);
+        verify(liquibaseService).runPublicMigrations(connection, "public", PUBLIC_CHANGELOG);
+    }
+
+    @Test
+    void unexpectedExceptionIsReportedAsFailedDatabase() {
+        when(session.resolveForDatabase(orders)).thenThrow(new IllegalStateException("bug"));
+        assertEquals(Set.of(orders.key()), runner.runInfrastructureMigrations(Map.of(), session));
     }
 
     @Test
@@ -154,7 +159,6 @@ class InfrastructureMigrationRunnerTest {
 
     @Test
     void reportsDatabaseWhoseFailureOutlastsTheRetries() {
-        properties.setFailOnError(false);
         when(session.resolveForDatabase(billing)).thenThrow(failure());
         assertEquals(Set.of(billing.key()), runner.runInfrastructureMigrations(Map.of(), session));
         verify(session, times(MigrationRetryProperties.DEFAULT_MAX_ATTEMPTS)).resolveForDatabase(billing);
