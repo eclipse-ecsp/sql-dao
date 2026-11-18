@@ -95,7 +95,6 @@ class TenantAwareDataSourceMigrationTest {
         tenantLock = new CountingLock();
         when(migrationRunner.tenantLock(TENANT)).thenReturn(tenantLock);
         when(migrationRunner.validateTenant(anyString(), any())).thenReturn(List.of());
-        when(migrationRunner.isFailOnError()).thenReturn(true);
         ObjectProvider<TenantMigrationRunner> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(migrationRunner);
 
@@ -135,41 +134,32 @@ class TenantAwareDataSourceMigrationTest {
     }
 
     @Test
-    void failedMigrationKeepsPreviousRouteAndRestoresCredentials() {
-        when(migrationRunner.migrateTenant(TENANT, newProperties, newPool)).thenReturn(false);
-        assertFalse(tenantAwareDataSource.addOrUpdateTenantDataSource(TENANT, newProperties));
-        assertSame(previousPool, targetDataSources.get(TENANT));
-        assertSame(previousProperties, tenantConfigMap.get(TENANT));
-        verify(postgresDbConfig).cleanupDataSource(newPool);
-        verify(postgresDbConfig, never()).cleanupDataSource(previousPool);
-        verify(postgresDbConfig).restoreCredentialsProvider(TENANT, previousProvider);
-    }
-
-    @Test
-    void withoutFailOnErrorTheTenantIsRegisteredAnyway() {
-        when(migrationRunner.isFailOnError()).thenReturn(false);
+    void failedMigrationStillRegistersTheTenant() {
         when(migrationRunner.migrateTenant(TENANT, newProperties, newPool)).thenReturn(false);
         assertTrue(tenantAwareDataSource.addOrUpdateTenantDataSource(TENANT, newProperties));
         assertSame(newPool, targetDataSources.get(TENANT));
+        assertSame(newProperties, tenantConfigMap.get(TENANT));
+        verify(postgresDbConfig).cleanupDataSource(previousPool);
+        verify(postgresDbConfig, never()).cleanupDataSource(newPool);
+        verify(postgresDbConfig, never()).restoreCredentialsProvider(anyString(), any());
     }
 
     @Test
     void configurationErrorsAreRejectedBeforeAnyPoolIsCreated() throws Exception {
         when(migrationRunner.validateTenant(TENANT, newProperties)).thenReturn(List.of("bad schema"));
-        when(migrationRunner.isFailOnError()).thenReturn(false);
         assertFalse(tenantAwareDataSource.addOrUpdateTenantDataSource(TENANT, newProperties));
         verify(postgresDbConfig, never()).initDataSource(anyString(), any());
     }
 
     @Test
-    void newTenantFailureRemovesItsCredentialsProvider() throws Exception {
+    void newTenantWithoutPoolRemovesItsCredentialsProvider() throws Exception {
         when(postgresDbConfig.findCredentialsProvider("tenant2")).thenReturn(Optional.empty());
         when(migrationRunner.tenantLock("tenant2")).thenReturn(new ReentrantLock());
-        when(migrationRunner.migrateTenant(eq("tenant2"), any(), any())).thenReturn(false);
-        when(postgresDbConfig.initDataSource(eq("tenant2"), any())).thenReturn(newPool);
+        when(postgresDbConfig.initDataSource(eq("tenant2"), any())).thenReturn(null);
         assertFalse(tenantAwareDataSource.addOrUpdateTenantDataSource("tenant2", newProperties));
         assertFalse(targetDataSources.containsKey("tenant2"));
         verify(postgresDbConfig).restoreCredentialsProvider("tenant2", null);
+        verify(migrationRunner, never()).migrateTenant(eq("tenant2"), any(), any());
     }
 
     @Test

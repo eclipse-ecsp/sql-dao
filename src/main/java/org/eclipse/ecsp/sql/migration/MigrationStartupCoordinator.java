@@ -51,7 +51,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.availability.AvailabilityChangeEvent;
 import org.springframework.boot.availability.ReadinessState;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import java.util.Collections;
@@ -70,7 +69,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * database initializer by {@link MigrationDatabaseInitializerDetector}, so the {@code EntityManagerFactory}, JDBC
  * templates, and {@code @DependsOnDatabaseInitialization} beans are created only after migrations complete. In
  * {@code after-ready} mode the phases run on a single background thread once the application accepts traffic.
- * Configuration checks always run in {@link #afterPropertiesSet()} and always fail startup.
+ * Configuration checks always run in {@link #afterPropertiesSet()} and always fail startup. A migration failure
+ * never does: it is retried, then logged, and the application continues without that tenant migrated.
  */
 @Component
 @ConditionalOnLiquibaseEnabled
@@ -85,7 +85,6 @@ public class MigrationStartupCoordinator implements InitializingBean, Disposable
     private final MigrationDataSourceResolver resolver;
     private final InfrastructureMigrationRunner infrastructureRunner;
     private final TenantMigrationRunner tenantRunner;
-    private final ApplicationEventPublisher eventPublisher;
     private final Map<String, TenantDatabaseProperties> tenantConfigMap;
     private final boolean multitenancyEnabled;
     private final AtomicBoolean afterReadyStarted = new AtomicBoolean();
@@ -99,13 +98,12 @@ public class MigrationStartupCoordinator implements InitializingBean, Disposable
      * @param resolver the migration datasource resolver
      * @param infrastructureRunner the Phase 1 runner
      * @param tenantRunner the Phase 2 and 3 runner
-     * @param eventPublisher publisher used to refuse traffic after an {@code after-ready} failure
      * @param tenantConfigMap the configured tenants
      * @param multitenancyEnabled whether multitenancy is enabled
      */
     public MigrationStartupCoordinator(SqlDaoLiquibaseProperties properties, MigrationConfigurationValidator validator,
             MigrationDataSourceResolver resolver, InfrastructureMigrationRunner infrastructureRunner,
-            TenantMigrationRunner tenantRunner, ApplicationEventPublisher eventPublisher,
+            TenantMigrationRunner tenantRunner,
             @Qualifier("tenantConfigMap") Map<String, TenantDatabaseProperties> tenantConfigMap,
             @Value("${" + MultitenantConstants.MULTITENANCY_ENABLED + ":false}") boolean multitenancyEnabled) {
         this.properties = properties;
@@ -113,7 +111,6 @@ public class MigrationStartupCoordinator implements InitializingBean, Disposable
         this.resolver = resolver;
         this.infrastructureRunner = infrastructureRunner;
         this.tenantRunner = tenantRunner;
-        this.eventPublisher = eventPublisher;
         this.tenantConfigMap = tenantConfigMap;
         this.multitenancyEnabled = multitenancyEnabled;
     }
@@ -121,7 +118,7 @@ public class MigrationStartupCoordinator implements InitializingBean, Disposable
     /**
      * Validates the configuration and, in {@code blocking} mode, runs the startup phases.
      *
-     * @throws MigrationException on invalid configuration, or on a migration failure with {@code fail-on-error=true}
+     * @throws MigrationException on invalid configuration
      */
     @Override
     public void afterPropertiesSet() {
@@ -170,17 +167,13 @@ public class MigrationStartupCoordinator implements InitializingBean, Disposable
     }
 
     /**
-     * Runs the {@code after-ready} phases. With {@code fail-on-error=true}, a failure makes the application refuse
-     * traffic, because startup can no longer be aborted.
+     * Runs the {@code after-ready} phases. The application keeps serving traffic whatever happens.
      */
     void runAfterReady() {
         try {
             runPhases(snapshot());
         } catch (RuntimeException e) {
             LOGGER.error("Startup migrations failed: {}", e.getMessage(), e);
-            if (this.properties.isFailOnError()) {
-                AvailabilityChangeEvent.publish(this.eventPublisher, this, ReadinessState.REFUSING_TRAFFIC);
-            }
         }
     }
 
@@ -196,6 +189,8 @@ public class MigrationStartupCoordinator implements InitializingBean, Disposable
                 LOGGER.warn("Liquibase migrations completed in a degraded state; failed databases: {}, failed or "
                         + "skipped tenants: {}", failedDatabases, failedTenants);
             }
+        } catch (RuntimeException e) {
+            LOGGER.error("Startup migrations failed; continuing without them: {}", e.getMessage(), e);
         }
     }
 

@@ -194,14 +194,17 @@ class LiquibaseBlockingStartupIntegrationTest extends LiquibaseSpringTestSupport
     }
 
     @Test
-    void onboardingWithInvalidSchemaFailsWithoutLeavingRouteOrPool() throws Exception {
+    void onboardingWithInvalidSchemaRegistersTheTenantUnmigratedAndCreatesNothing() throws Exception {
         TenantDatabaseProperties tenant = tenantProperties(postgres.getJdbcUrl(), "Bad-Name", "springEPool");
 
-        assertFalse(tenantAwareDataSource.addOrUpdateTenantDataSource("tenante", tenant));
-
+        assertTrue(tenantAwareDataSource.addOrUpdateTenantDataSource("tenante", tenant));
+        try {
+            assertTrue(targetDataSources.containsKey("tenante"), "a failed migration never blocks registration");
+            assertFalse(schemaExists("Bad-Name"), "the invalid schema must not be created");
+        } finally {
+            tenantAwareDataSource.removeTenantDataSource("tenante");
+        }
         assertFalse(targetDataSources.containsKey("tenante"));
-        assertFalse(tenantConfigMap.containsKey("tenante"));
-        assertFalse(schemaExists("Bad-Name"));
     }
 
     @Test

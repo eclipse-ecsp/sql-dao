@@ -56,8 +56,7 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * A failing migration in {@code after-ready} mode: with {@code fail-on-error=true}, startup can no longer be aborted,
- * so the application must refuse traffic.
+ * A failing migration in {@code after-ready} mode: the failure is logged and the application keeps accepting traffic.
  */
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = {SqlDaoApplication.class, ReadinessRecorder.class})
@@ -78,13 +77,16 @@ class LiquibaseAfterReadyFailureIntegrationTest extends LiquibaseSpringTestSuppo
     private ReadinessRecorder recorder;
 
     @Test
-    void refusesTrafficWhenMigrationFailsAndFailOnErrorIsSet() throws Exception {
+    void keepsAcceptingTrafficWhenMigrationsFail() throws Exception {
         AvailabilityChangeEvent.publish(context, this, ReadinessState.ACCEPTING_TRAFFIC);
 
         await().atMost(TIMEOUT_SECONDS, TimeUnit.SECONDS).pollInterval(POLL_MILLIS, TimeUnit.MILLISECONDS)
-                .until(() -> recorder.states().contains(ReadinessState.REFUSING_TRAFFIC));
+                .ignoreExceptions().untilAsserted(() -> {
+                    assertEquals(1, count("spring_a.databasechangelog"));
+                    assertEquals(1, count("spring_b.databasechangelog"));
+                });
 
-        assertEquals(List.of(ReadinessState.ACCEPTING_TRAFFIC, ReadinessState.REFUSING_TRAFFIC), recorder.states());
-        assertEquals(1, count("spring_a.databasechangelog"), "the changeset before the broken one stays applied");
+        assertEquals(List.of(ReadinessState.ACCEPTING_TRAFFIC), recorder.states(),
+                "a failed migration must not make the application refuse traffic");
     }
 }

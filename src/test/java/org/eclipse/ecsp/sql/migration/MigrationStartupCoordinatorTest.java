@@ -46,16 +46,14 @@ import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.boot.availability.AvailabilityChangeEvent;
 import org.springframework.boot.availability.ReadinessState;
-import org.springframework.context.ApplicationEventPublisher;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -80,7 +78,6 @@ class MigrationStartupCoordinatorTest {
     private MigrationSession session;
     private InfrastructureMigrationRunner infrastructureRunner;
     private TenantMigrationRunner tenantRunner;
-    private ApplicationEventPublisher publisher;
     private Map<String, TenantDatabaseProperties> tenantConfigMap;
     private MigrationStartupCoordinator coordinator;
 
@@ -96,7 +93,6 @@ class MigrationStartupCoordinatorTest {
         tenantRunner = mock(TenantMigrationRunner.class);
         when(infrastructureRunner.runInfrastructureMigrations(anyMap(), any())).thenReturn(Set.of());
         when(tenantRunner.migrateAllTenants(anyMap(), anySet(), any())).thenReturn(Set.of());
-        publisher = mock(ApplicationEventPublisher.class);
         tenantConfigMap = new HashMap<>();
         tenantConfigMap.put("default", new TenantDatabaseProperties());
         tenantConfigMap.put("tenant1", new TenantDatabaseProperties());
@@ -133,10 +129,10 @@ class MigrationStartupCoordinatorTest {
     }
 
     @Test
-    void blockingModeFailurePropagates() {
+    void blockingModeFailureIsLoggedAndStartupContinues() {
         when(tenantRunner.migrateAllTenants(anyMap(), anySet(), any()))
                 .thenThrow(new MigrationException("x", "tenant1", MigrationErrorCode.MIGRATION_FAILED));
-        assertThrows(MigrationException.class, () -> coordinator.afterPropertiesSet());
+        assertDoesNotThrow(() -> coordinator.afterPropertiesSet());
         verify(session).close();
     }
 
@@ -170,27 +166,15 @@ class MigrationStartupCoordinatorTest {
     }
 
     @Test
-    void afterReadyFailureRefusesTrafficWhenFailOnError() {
+    void afterReadyFailureNeverStopsTheApplication() {
         properties.setStartupMode(StartupMode.AFTER_READY);
-        when(tenantRunner.migrateAllTenants(anyMap(), anySet(), any()))
-                .thenThrow(new MigrationException("x", "tenant1", MigrationErrorCode.MIGRATION_FAILED));
-        coordinator.runAfterReady();
-        ArgumentCaptor<AvailabilityChangeEvent<?>> event = ArgumentCaptor.forClass(AvailabilityChangeEvent.class);
-        verify(publisher).publishEvent(event.capture());
-        assertEquals(ReadinessState.REFUSING_TRAFFIC, event.getValue().getState());
-    }
-
-    @Test
-    void afterReadyFailureKeepsServingWithoutFailOnError() {
-        properties.setStartupMode(StartupMode.AFTER_READY);
-        properties.setFailOnError(false);
         when(tenantRunner.migrateAllTenants(anyMap(), anySet(), any())).thenThrow(new IllegalStateException("x"));
-        coordinator.runAfterReady();
-        verify(publisher, never()).publishEvent(any(Object.class));
+        assertDoesNotThrow(() -> coordinator.runAfterReady());
+        verify(session).close();
     }
 
     private MigrationStartupCoordinator coordinator(boolean multitenancyEnabled) {
         return new MigrationStartupCoordinator(properties, validator, resolver, infrastructureRunner, tenantRunner,
-                publisher, tenantConfigMap, multitenancyEnabled);
+                tenantConfigMap, multitenancyEnabled);
     }
 }
