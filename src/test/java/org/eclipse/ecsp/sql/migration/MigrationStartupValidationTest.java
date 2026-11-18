@@ -50,8 +50,6 @@ import java.util.List;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -113,15 +111,6 @@ class MigrationStartupValidationTest {
     void rejectsDeferredDatasourceInitialization() {
         environment.setProperty("spring.jpa.defer-datasource-initialization", "true");
         assertInvalid("defer-datasource-initialization=true is not supported");
-    }
-
-    @Test
-    void acceptsOnlyLiquibaseFour() {
-        assertNull(validator.checkLiquibaseVersion("4.33.0"));
-        assertNull(validator.checkLiquibaseVersion("DEV"));
-        String error = validator.checkLiquibaseVersion("5.0.2");
-        assertNotNull(error);
-        assertTrue(error.contains("4.33.0"));
     }
 
     @Test

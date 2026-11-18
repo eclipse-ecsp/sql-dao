@@ -39,14 +39,11 @@
 
 package org.eclipse.ecsp.sql.migration;
 
-import liquibase.util.LiquibaseUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.ecsp.sql.dao.constants.MigrationConstants;
 import org.eclipse.ecsp.sql.migration.MigrationDataSourceResolver.DatabaseTarget;
 import org.eclipse.ecsp.sql.migration.MigrationException.MigrationErrorCode;
 import org.eclipse.ecsp.sql.multitenancy.TenantDatabaseProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import java.util.ArrayList;
@@ -63,9 +60,6 @@ import java.util.regex.Pattern;
 @ConditionalOnLiquibaseEnabled
 public class MigrationConfigurationValidator {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(MigrationConfigurationValidator.class);
-    private static final String SUPPORTED_LIQUIBASE_MAJOR = "4";
-    private static final String PINNED_LIQUIBASE_VERSION = "4.33.0";
     private static final Pattern CURRENT_SCHEMA_PARAMETER =
             Pattern.compile("[?&]currentSchema=", Pattern.CASE_INSENSITIVE);
 
@@ -122,36 +116,10 @@ public class MigrationConfigurationValidator {
         return errors;
     }
 
-    /**
-     * Checks the Liquibase version on the classpath.
-     *
-     * @param version the Liquibase build version
-     * @return the problem found, or {@code null} when the version is supported
-     */
-    String checkLiquibaseVersion(String version) {
-        String major = StringUtils.substringBefore(StringUtils.defaultString(version), ".");
-        if (!StringUtils.isNumeric(major)) {
-            LOGGER.warn("Cannot determine the Liquibase version ({}); sql-dao is verified with {}", version,
-                    PINNED_LIQUIBASE_VERSION);
-            return null;
-        }
-        if (SUPPORTED_LIQUIBASE_MAJOR.equals(major)) {
-            return null;
-        }
-        return "Liquibase " + version + " is on the classpath, but sql-dao requires " + PINNED_LIQUIBASE_VERSION
-                + " (Liquibase 5.x is FSL-licensed). Pin org.liquibase:liquibase-core to " + PINNED_LIQUIBASE_VERSION
-                + ": with spring-boot-starter-parent set <liquibase.version>; with an imported Spring Boot BOM declare "
-                + "liquibase-core in your own dependencyManagement before the BOM import";
-    }
-
     private List<String> validateGlobal() {
         List<String> errors = new ArrayList<>();
         if (StringUtils.isBlank(this.properties.getChangeLog())) {
             errors.add("sqldao.liquibase.change-log is required when sqldao.liquibase.enabled=true");
-        }
-        String versionError = checkLiquibaseVersion(LiquibaseUtil.getBuildVersion());
-        if (versionError != null) {
-            errors.add(versionError);
         }
         if (this.environment.getProperty(MigrationConstants.DEFER_DATASOURCE_INITIALIZATION, Boolean.class, false)) {
             errors.add(MigrationConstants.DEFER_DATASOURCE_INITIALIZATION + "=true is not supported: it makes "
