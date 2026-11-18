@@ -42,7 +42,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.eclipse.ecsp</groupId>
 	<artifactId>sql-dao</artifactId>
-	<version>1.4.0</version>
+	<version>1.4-WI-580-liquibase-SNAPSHOT</version>
 	
 	<name>SQL DAO Library</name>
 	<description>DAO framework for SQL databases</description>
@@ -98,6 +98,8 @@
 		<spring.boot.version>4.0.6</spring.boot.version>
 		<lombok.version>1.18.42</lombok.version>
 		<postgres.version>42.7.11</postgres.version>
+		<!-- Pinned: 4.33.0 is the last Apache-2.0 release; Liquibase 5.x is FSL-licensed. -->
+		<liquibase.version>4.33.0</liquibase.version>
 		<dropwizard.version>4.2.19</dropwizard.version>
 		<spring.version>7.0.5</spring.version>
 		<jacoco.ut.execution.data.file>${project.build.directory}/coverage-reports/jacoco-ut.exec</jacoco.ut.execution.data.file>
@@ -152,6 +154,11 @@
     </repositories>
 
 	<dependencies>
+		<dependency>
+			<groupId>org.liquibase</groupId>
+			<artifactId>liquibase-core</artifactId>
+			<version>${liquibase.version}</version>
+		</dependency>
 		<dependency>
 			<groupId>org.testcontainers</groupId>
 			<artifactId>testcontainers-postgresql</artifactId>

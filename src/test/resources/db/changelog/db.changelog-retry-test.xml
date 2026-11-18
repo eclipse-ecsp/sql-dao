@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="1-attempts" author="sql-dao">
+        <sql>CREATE TABLE attempts (id serial PRIMARY KEY)</sql>
+    </changeSet>
+
+    <!-- Runs on every attempt and commits, so the table counts how many attempts a migration needed. -->
+    <changeSet id="2-record-attempt" author="sql-dao" runAlways="true">
+        <sql>INSERT INTO attempts DEFAULT VALUES</sql>
+    </changeSet>
+
+    <!-- Kills its own database connection on the first attempt only, like a failover in the middle of a run. -->
+    <changeSet id="3-lose-connection" author="sql-dao">
+        <sql splitStatements="false">
+            DO $$
+            BEGIN
+                IF (SELECT count(*) FROM attempts) &lt; 2 THEN
+                    PERFORM pg_terminate_backend(pg_backend_pid());
+                    PERFORM pg_sleep(5);
+                END IF;
+            END
+            $$;
+        </sql>
+    </changeSet>
+
+    <changeSet id="4-orders" author="sql-dao">
+        <createTable tableName="orders">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

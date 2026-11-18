@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="1-orders" author="sql-dao">
+        <createTable tableName="orders">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <!-- Records when this tenant's migration ran, so a test can tell whether tenants overlapped in time. -->
+    <changeSet id="2-timing" author="sql-dao">
+        <sql>
+            CREATE TABLE migration_timing (started timestamptz, finished timestamptz);
+            INSERT INTO migration_timing (started) VALUES (clock_timestamp());
+            SELECT pg_sleep(0.5);
+            UPDATE migration_timing SET finished = clock_timestamp();
+        </sql>
+    </changeSet>
+</databaseChangeLog>
